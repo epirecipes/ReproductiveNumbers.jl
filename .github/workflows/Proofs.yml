@@ -1,0 +1,29 @@
+name: Lean proofs
+on:
+  push:
+    branches: [main]
+    paths: ['proofs/**']
+  pull_request:
+    paths: ['proofs/**']
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: proofs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: proofs
+          use-mathlib-cache: true
+          build-args: ReproductiveNumbersProofs
+      - name: Check for placeholders and render documentation
+        run: |
+          sudo apt-get update && sudo apt-get install -y pandoc
+          ./scripts/check.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proofs-html
+          path: proofs/docs/*.html

@@ -1,0 +1,95 @@
+---
+title: "3. Two latent stages: a rank-one next-generation matrix"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+Example 2.1 of Diekmann, Heesterbeek and Roberts (2010) is an SEI model in which newly
+infected individuals enter one of two latent classes, `E₁` with probability `p` and `E₂`
+with probability `1 - p`, with different progression rates `ν₁`, `ν₂`. There are two
+states-at-infection, so `K` is `2 × 2`, but because the two classes are always entered in
+the same proportions `K` has rank one and `det K = 0`. Its only non-zero eigenvalue is its
+trace, and the paper reduces further to a *small domain* matrix `K_S` that is a scalar.
+
+## The model
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics, LinearAlgebra
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters β p ν₁ ν₂ γ μ N
+@variables S(t) E₁(t) E₂(t) I(t) R(t)
+eqs = [D(S) ~ μ * N - β * S * I / N - μ * S,
+    D(E₁) ~ p * β * S * I / N - (ν₁ + μ) * E₁,
+    D(E₂) ~ (1 - p) * β * S * I / N - (ν₂ + μ) * E₂,
+    D(I) ~ ν₁ * E₁ + ν₂ * E₂ - (γ + μ) * I,
+    D(R) ~ γ * I - μ * R]
+sys = complete(System(eqs, t; name = :two_latent))
+ngm = next_generation_matrix(sys, [E₁, E₂, I])
+```
+
+The transmission matrix has two non-zero rows, both proportional to `(0, 0, β)`:
+
+```{julia}
+ngm.T
+```
+
+## The next-generation matrix
+
+```{julia}
+ngm.K
+```
+
+Compare with equation (2.9) of the paper: `K[i, j]` is the expected number of new
+infections of type `i` (entering `E₁` or `E₂`) produced by an individual who entered the
+infected population in state `j`. The second column differs from the first only by the
+factor `ν₂/(ν₂+μ)` versus `ν₁/(ν₁+μ)`, the probability of surviving the latent stage, and
+the rows are proportional to `p` and `1 - p`. The determinant vanishes:
+
+```{julia}
+symbolic_isequal(det(ngm.K), 0)
+```
+
+`basic_reproduction_number` detects the rank-one structure and returns the trace, which is
+the paper's equation (2.10):
+
+```{julia}
+R0 = basic_reproduction_number(ngm)
+```
+
+```{julia}
+paper = ν₁ * β * p / ((ν₁ + μ) * (γ + μ)) + (1 - p) * ν₂ * β / ((ν₂ + μ) * (γ + μ))
+symbolic_isequal(R0, paper)
+```
+
+## The small-domain matrix
+
+Diekmann et al. write `T = C R` with `R` the single independent row of `T` and `C` the
+column of proportions, and define `K_S = -R Σ⁻¹ C`. For rank-one `T` this is a scalar:
+
+```{julia}
+small_domain_matrix(ngm)
+```
+
+Its single entry is again `R₀`: reading it epidemiologically, a newly infectious
+individual (the only state that transmits) produces `β/(γ+μ)` new infections, each of
+which becomes infectious with probability `p ν₁/(ν₁+μ) + (1-p) ν₂/(ν₂+μ)`.
+
+## Why the Lean proof matters here
+
+The rank-one shortcut is exactly the statement that every non-zero eigenvalue of a
+matrix of the form `u vᵀ` is `vᵀu = trace(u vᵀ)`. That fact, and this specific example,
+are machine-checked in `proofs/ReproductiveNumbersProofs/RankOne.lean` and
+`proofs/ReproductiveNumbersProofs/Examples.lean`. The Julia code tests rank one by
+checking that all `2 × 2` minors vanish, symbolically and, as a fallback, at random
+parameter values.
+
+## Numeric evaluation
+
+```{julia}
+vals = Dict(β => 0.6, p => 0.3, ν₁ => 0.5, ν₂ => 0.1, γ => 0.2, μ => 0.01, N => 1.0)
+(basic_reproduction_number(ngm, vals), Symbolics.value(substitute(paper, vals)))
+```

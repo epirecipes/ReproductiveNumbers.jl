@@ -1,0 +1,126 @@
+---
+title: "2. SEIR with demography: large and restricted domains"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+The SEIR model has two infected compartments, exposed (`E`) and infectious (`I`), but
+only one of them, `E`, can be entered by infection. This vignette shows the difference
+between the next-generation matrix with *large domain* `K_L = -T Σ⁻¹`, indexed by all
+infected states, and the next-generation matrix `K = Eᵀ K_L E` restricted to the
+*states-at-infection*, which is what Diekmann et al. (2010) call *the* next-generation
+matrix. Both have the same non-zero eigenvalues (this is proved in the package's Lean
+formalisation, `proofs/ReproductiveNumbersProofs/Restriction.lean`), so both give `R₀`,
+but `K` is smaller and its entries have a direct interpretation.
+
+With births and deaths the infection-free steady state is unique and the package finds
+it automatically.
+
+## The model
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters β σ γ μ N
+@variables S(t) E(t) I(t) R(t)
+eqs = [D(S) ~ μ * N - β * S * I / N - μ * S,
+    D(E) ~ β * S * I / N - (σ + μ) * E,
+    D(I) ~ σ * E - (γ + μ) * I,
+    D(R) ~ γ * I - μ * R]
+seir = complete(System(eqs, t; name = :seir))
+```
+
+## Infection-free steady state
+
+Setting `E = I = 0` and solving the remaining equations gives `S = N`, `R = 0`:
+
+```{julia}
+disease_free_equilibrium(seir, [E, I])
+```
+
+## Transmissions and transitions
+
+```{julia}
+ngm = next_generation_matrix(seir, [E, I])
+```
+
+Only the first row of `T` is non-zero: new infections always appear in `E`. So `E` is the
+only state-at-infection and the selection matrix `E` (the field `ngm.E`) has a single
+column:
+
+```{julia}
+states_at_infection(ngm), ngm.E
+```
+
+`-Σ⁻¹` is the matrix of expected sojourn times. Its `(2, 1)` entry is the expected time
+spent infectious by someone who is currently exposed: the probability `σ/(σ+μ)` of
+surviving the latent period times the mean infectious period `1/(γ+μ)`.
+
+```{julia}
+-inv(ngm.Σ) .|> ReproductiveNumbers.tidy
+```
+
+## Large versus restricted domain
+
+`K_L` tells us how many new infections an individual in *any* infected state will produce:
+`K_L[1, 2] = β/(γ+μ)` for someone who is already infectious, and `K_L[1, 1]` for someone
+just exposed, who must first survive the latent period.
+
+```{julia}
+ngm.K_L
+```
+
+Its second row is zero (nobody is *born* infectious), so the matrix is singular and its
+non-zero spectrum is that of the `1 × 1` restriction:
+
+```{julia}
+ngm.K
+```
+
+```{julia}
+R0 = basic_reproduction_number(ngm)
+```
+
+The characteristic polynomial of `K_L` makes the shared non-zero eigenvalue explicit:
+
+```{julia}
+characteristic_polynomial(ngm.K_L)
+```
+
+## Numeric check
+
+```{julia}
+using LinearAlgebra
+p = Dict(β => 0.5, σ => 0.25, γ => 0.2, μ => 0.01, N => 1000.0)
+num = evaluate(ngm, p)
+(basic_reproduction_number(num), maximum(abs, eigvals(num.K_L)),
+    Symbolics.value(substitute(R0, p)))
+```
+
+The sign conventions of van den Driessche & Watmough (2002) (`T ≥ 0`, `Σ` with
+non-negative off-diagonal and non-positive diagonal entries, `-Σ⁻¹ ≥ 0`) can be checked
+numerically:
+
+```{julia}
+validate_decomposition(num)
+```
+
+And `R₀ > 1` if and only if the Jacobian `T + Σ` of the infected subsystem has an
+eigenvalue with positive real part:
+
+```{julia}
+maximum(real, eigvals(num.T + num.Σ))
+```
+
+## Choosing the infected states by name
+
+Symbols work as well as symbolic variables, and the order of the infected states only
+changes the ordering of rows and columns:
+
+```{julia}
+basic_reproduction_number(seir, [:I, :E])
+```

@@ -1,0 +1,105 @@
+---
+title: "4. Vector-borne transmission: two host types and the meaning of a generation"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+In the Ross–Macdonald model of malaria, infection passes from humans to mosquitoes and
+back. There are two states-at-infection (`I_H` and `I_V`) and no within-type transmission,
+so `K` is `2 × 2` with a zero diagonal and `R₀ = √(K[1,2] K[2,1])`. The square root
+reflects a choice: counting a mosquito infected by a human as a "new infection" makes a
+human-to-human cycle two generations long. Diekmann et al. (2010, section 3) emphasise that
+different decompositions into transmissions and transitions give different reproduction
+numbers, all with the same threshold. This vignette shows both.
+
+## The model
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters a b c γ μᵥ N_H N_V
+@variables S_H(t) I_H(t) S_V(t) I_V(t)
+eqs = [D(S_H) ~ -a * b * S_H * I_V / N_H + γ * I_H,
+    D(I_H) ~ a * b * S_H * I_V / N_H - γ * I_H,
+    D(S_V) ~ μᵥ * N_V - a * c * S_V * I_H / N_H - μᵥ * S_V,
+    D(I_V) ~ a * c * S_V * I_H / N_H - μᵥ * I_V]
+malaria = complete(System(eqs, t; name = :ross_macdonald))
+```
+
+Here `a` is the biting rate per mosquito, `b` and `c` the transmission probabilities per
+bite (mosquito to human and human to mosquito), `γ` the human recovery rate and `μᵥ` the
+mosquito death rate. The host population has no demography, so we supply the
+infection-free state explicitly.
+
+```{julia}
+eq = Dict(S_H => N_H, S_V => N_V)
+ngm = next_generation_matrix(malaria, [I_H, I_V]; equilibrium = eq)
+```
+
+## Two states-at-infection
+
+```{julia}
+ngm.K
+```
+
+`K[1, 2] = a b / μᵥ` is the number of humans infected by one mosquito over its lifetime and
+`K[2, 1] = a c (N_V / N_H) / γ` the number of mosquitoes infected by one human. The
+dominant eigenvalue of a `2 × 2` matrix with zero diagonal is the geometric mean:
+
+```{julia}
+R0 = basic_reproduction_number(ngm)
+```
+
+The `2 × 2` closed form `(tr K + √((K₁₁ - K₂₂)² + 4 K₁₂ K₂₁)) / 2`, and its reduction
+to `√(K₁₂ K₂₁)` when the diagonal vanishes, are proved in
+`proofs/ReproductiveNumbersProofs/TwoByTwo.lean`.
+
+## Counting only host-to-host generations
+
+If we regard only *human* infections as reproduction, then a human infecting a mosquito
+is a transition, not a transmission. We tell the package which terms are new infections by
+giving the vector of new-infection rates for each infected compartment (van den Driessche
+and Watmough's `𝓕`):
+
+```{julia}
+ngm_host = next_generation_matrix(malaria, [I_H, I_V]; equilibrium = eq,
+    transmission = [a * b * S_H * I_V / N_H, 0])
+states_at_infection(ngm_host)
+```
+
+Now only `I_H` is a state-at-infection, `K` is `1 × 1`, and the reproduction number is
+the square of the previous one, the classical Macdonald formula:
+
+```{julia}
+basic_reproduction_number(ngm_host)
+```
+
+```{julia}
+symbolic_isequal(basic_reproduction_number(ngm_host), R0^2)
+```
+
+Both decompositions are legitimate; they agree on whether `R₀` exceeds one, but not on its
+value. The transition matrix of the second decomposition is no longer block diagonal:
+`-Σ⁻¹` now tracks a human's expected "time" spent as an infected mosquito.
+
+```{julia}
+ngm_host.Σ
+```
+
+## Numeric comparison
+
+```{julia}
+vals = Dict(a => 0.3, b => 0.5, c => 0.5, γ => 0.1, μᵥ => 0.1, N_H => 1000.0, N_V => 5000.0)
+(basic_reproduction_number(ngm, vals), basic_reproduction_number(ngm_host, vals))
+```
+
+```{julia}
+using LinearAlgebra
+num = evaluate(ngm, vals)
+# the Jacobian of the infected subsystem is the same for both decompositions
+maximum(real, eigvals(num.T + num.Σ)) > 0
+```

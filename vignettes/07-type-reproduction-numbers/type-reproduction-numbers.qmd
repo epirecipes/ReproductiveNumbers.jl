@@ -1,0 +1,127 @@
+---
+title: "7. Type reproduction numbers and targeted control"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+When there are several types of host, `R₀` measures the growth of the infection over a
+"typical" generation but does not say how much control aimed at *one* type is needed to
+stop transmission. The *type reproduction number* `T_S` of Roberts and Heesterbeek (2003,
+Proc. R. Soc. B 270:1359–1364) answers that: it counts the infections of types in the set
+`S` produced by one individual of a type in `S`, following chains of infection through the
+other types. With `P` the projection onto `S`,
+
+$$T_S = \rho\bigl(P K (I - (I - P) K)^{-1}\bigr),$$
+
+which for a single type is a scalar. Reducing transmission *from* the types in `S` by a
+factor `1 − 1/T_S` eliminates the infection, and `T_S > 1` iff `R₀ > 1` provided the
+infection cannot persist among the other types alone.
+
+## Two host types
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics, LinearAlgebra
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters β₁₁ β₁₂ β₂₁ β₂₂ γ N₁ N₂
+@variables S₁(t) S₂(t) I₁(t) I₂(t)
+N = N₁ + N₂
+eqs = [D(S₁) ~ -S₁ * (β₁₁ * I₁ + β₁₂ * I₂) / N,
+    D(S₂) ~ -S₂ * (β₂₁ * I₁ + β₂₂ * I₂) / N,
+    D(I₁) ~ S₁ * (β₁₁ * I₁ + β₁₂ * I₂) / N - γ * I₁,
+    D(I₂) ~ S₂ * (β₂₁ * I₁ + β₂₂ * I₂) / N - γ * I₂]
+sys = complete(System(eqs, t; name = :two_type))
+ngm = next_generation_matrix(sys, [I₁, I₂]; equilibrium = Dict(S₁ => N₁, S₂ => N₂))
+ngm.K
+```
+
+The type reproduction number of type 1 is `K₁₁ + K₁₂ K₂₁ / (1 − K₂₂)`: direct
+type-1-to-type-1 infections plus chains that pass through type 2 any number of times.
+
+```{julia}
+T₁ = type_reproduction_number(ngm, I₁)
+```
+
+```{julia}
+symbolic_isequal(T₁, ngm.K[1, 1] + ngm.K[1, 2] * ngm.K[2, 1] / (1 - ngm.K[2, 2]))
+```
+
+Taking both types together recovers `R₀`:
+
+```{julia}
+symbolic_isequal(type_reproduction_number(ngm, [I₁, I₂]), basic_reproduction_number(ngm))
+```
+
+## A numerical example: core group and general population
+
+Let type 1 be a small, highly connected core group and type 2 the general population.
+
+```{julia}
+vals = Dict(β₁₁ => 30.0, β₁₂ => 3.0, β₂₁ => 3.0, β₂₂ => 0.8, γ => 1.0, N₁ => 0.1, N₂ => 0.9)
+num = evaluate(ngm, vals)
+num.K
+```
+
+```{julia}
+R0 = basic_reproduction_number(num)
+T1 = type_reproduction_number(num, 1)
+T2 = try
+    type_reproduction_number(num, 2)
+catch err
+    err
+end
+(R0, T1, T2)
+```
+
+`R₀` is well above one. `T₂` is undefined because the core group sustains transmission by
+itself (`K₁₁ > 1`): no amount of control aimed only at the general population can eliminate
+the infection, and the package says so. Control aimed at the core group must reduce its
+transmission by a factor `1 − 1/T₁`, which is larger than `1 − 1/R₀` because the core group
+also has to compensate for the chains it seeds in the general population:
+
+```{julia}
+critical_coverage = 1 - 1 / T1
+```
+
+We can verify that vaccinating this fraction of the core group brings `R₀` to exactly one.
+A vaccinated fraction `v` of type 1 removes that fraction of `S₁` from the infection-free
+state, which scales the first row of `K` by `1 − v`:
+
+```{julia}
+@parameters v
+ngm_v = next_generation_matrix(
+    sys, [I₁, I₂]; equilibrium = Dict(S₁ => (1 - v) * N₁, S₂ => N₂))
+basic_reproduction_number(ngm_v, merge(vals, Dict(v => critical_coverage)))
+```
+
+whereas vaccinating the same fraction of the general population leaves `R₀` above one:
+
+```{julia}
+ngm_w = next_generation_matrix(
+    sys, [I₁, I₂]; equilibrium = Dict(S₁ => N₁, S₂ => (1 - v) * N₂))
+basic_reproduction_number(ngm_w, merge(vals, Dict(v => critical_coverage)))
+```
+
+## Vector control in the Ross–Macdonald model
+
+For the malaria model of vignette 4 the two types are humans and mosquitoes. With the
+two-generation decomposition, `K` has a zero diagonal and the type reproduction number of
+either type is `K₁₂ K₂₁ = R₀²`, the classical basic reproduction number of Macdonald:
+
+```{julia}
+@parameters a b c γₕ μᵥ N_H N_V
+@variables S_H(t) I_H(t) S_V(t) I_V(t)
+malaria = complete(System(
+    [D(S_H) ~ -a * b * S_H * I_V / N_H + γₕ * I_H,
+        D(I_H) ~ a * b * S_H * I_V / N_H - γₕ * I_H,
+        D(S_V) ~ μᵥ * N_V - a * c * S_V * I_H / N_H - μᵥ * S_V,
+        D(I_V) ~ a * c * S_V * I_H / N_H - μᵥ * I_V],
+    t;
+    name = :malaria))
+ngm_m = next_generation_matrix(
+    malaria, [I_H, I_V]; equilibrium = Dict(S_H => N_H, S_V => N_V))
+(type_reproduction_number(ngm_m, I_V), basic_reproduction_number(ngm_m)^2)
+```

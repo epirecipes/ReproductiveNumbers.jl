@@ -1,0 +1,122 @@
+---
+title: "5. Reaction networks with Catalyst.jl"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+When a model is written as a reaction network, the split into transmissions and
+transitions can be read off the stoichiometry rather than guessed from the algebra: a
+reaction is a *transmission* if it increases the total number of individuals in the
+infected compartments. `S + I → E + I` creates an infected individual; `E → I` and
+`I → R` do not; `I → I + J` (an infected mother bearing an infected juvenile) does. This
+vignette shows the Catalyst interface of `ReproductiveNumbers.jl`, which is loaded
+automatically when Catalyst is.
+
+## SEIR as a reaction network
+
+```{julia}
+using ReproductiveNumbers, Catalyst, ModelingToolkit, Symbolics
+
+seir = @reaction_network seir begin
+    @parameters β σ γ μ N
+    β / N, S + I --> E + I
+    σ, E --> I
+    γ, I --> R
+    μ * N, 0 --> S
+    μ, (S, E, I, R) --> 0
+end
+@unpack S, E, I, R, β, σ, γ, μ, N = seir
+reactions(seir)
+```
+
+```{julia}
+ngm = next_generation_matrix(seir, [E, I])
+```
+
+```{julia}
+basic_reproduction_number(ngm)
+```
+
+The result is identical to the ModelingToolkit route (vignette 2), because the network is
+converted to the same ODE system:
+
+```{julia}
+basic_reproduction_number(Catalyst.ode_model(seir), [E, I])
+```
+
+## Vertical transmission
+
+Suppose a fraction `p` of births to infected mothers are infected juveniles `J`, who
+mature at rate `ν` into infectious adults. Written as ODEs, the term `p μ I` in the
+equation for `J` is linear in the infected states and involves no susceptible class, so the
+term-based heuristic of the ODE interface would file it under *transitions*. The
+stoichiometry makes the classification unambiguous:
+
+```{julia}
+vertical = @reaction_network vertical begin
+    @parameters β μ ν γ p N
+    β / N, S + I --> 2I          # horizontal transmission: +1 infected
+    p * μ, I --> I + J           # vertical transmission:   +1 infected
+    (1 - p) * μ, I --> I + S     # uninfected birth to an infected mother
+    μ, S --> 2S                  # births
+    ν, J --> I                   # maturation: 0 net infected
+    γ + μ, I --> 0               # recovery/death
+    μ, (S, J) --> 0
+end
+@unpack S, J, I, β, μ, ν, γ, p, N = vertical
+ngm_v = next_generation_matrix(vertical, [J, I]; equilibrium = Dict(S => N))
+```
+
+Both `J` and `I` are states-at-infection, and the second column of `T` records the two
+ways an infectious adult produces new infecteds:
+
+```{julia}
+ngm_v.T
+```
+
+`K` has rank one (both rows of `T` are multiples of `(0, 1)`), so `R₀` is its trace:
+the expected number of horizontally infected adults, `β/(γ+μ)`, plus the expected number of
+vertically infected juveniles who survive to adulthood, `p μ ν / ((ν+μ)(γ+μ))`.
+
+```{julia}
+basic_reproduction_number(ngm_v)
+```
+
+## Overriding the classification
+
+The default can be overridden with a predicate on `Reaction`s, a vector of Booleans, or
+reaction indices. For the vector-borne model of vignette 4, counting only mosquito-to-human
+infections as reproduction:
+
+```{julia}
+malaria = @reaction_network malaria begin
+    @parameters a b c γ μᵥ N_H N_V
+    a * b / N_H, S_H + I_V --> I_H + I_V
+    γ, I_H --> S_H
+    a * c / N_H, S_V + I_H --> I_V + I_H
+    μᵥ * N_V, 0 --> S_V
+    μᵥ, (S_V, I_V) --> 0
+end
+@unpack S_H, I_H, S_V, I_V = malaria
+eq = Dict(S_H => malaria.N_H, S_V => malaria.N_V)
+R0_two_generations = basic_reproduction_number(malaria, [I_H, I_V]; equilibrium = eq)
+```
+
+```{julia}
+host_to_host = rx -> any(isequal(I_H), rx.products) && any(isequal(S_H), rx.substrates)
+R0_host = basic_reproduction_number(
+    malaria, [I_H, I_V]; equilibrium = eq, transmission = host_to_host)
+```
+
+```{julia}
+symbolic_isequal(R0_host, R0_two_generations^2)
+```
+
+Reaction indices work too:
+
+```{julia}
+basic_reproduction_number(malaria, [I_H, I_V]; equilibrium = eq, transmission = [1])
+```

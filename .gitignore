@@ -1,0 +1,25 @@
+# Julia
+*.jl.cov
+*.jl.*.cov
+*.jl.mem
+Manifest.toml
+Manifest-v*.toml
+/docs/build/
+/docs/Manifest.toml
+
+# Quarto vignettes
+vignettes/**/*_files/
+vignettes/**/.quarto/
+vignettes/**/*.html
+vignettes/**/*.pdf
+vignettes/**/*.ipynb
+vignettes/_freeze/
+
+# Lean
+proofs/.lake/
+proofs/docs/generated/
+
+# OS / editors
+.DS_Store
+.vscode/
+*.swp

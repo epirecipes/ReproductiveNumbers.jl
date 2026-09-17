@@ -1,0 +1,5 @@
+body { max-width: 52em; margin: 2em auto; padding: 0 1em; font-family: Georgia, serif; line-height: 1.5; color: #222; }
+pre { background: #f6f8fa; padding: 0.8em; overflow-x: auto; border-radius: 4px; font-size: 0.9em; }
+code { font-family: "Fira Code", Menlo, monospace; }
+h1, h2, h3 { font-family: Helvetica, Arial, sans-serif; }
+#TOC { background: #fafafa; padding: 0.5em 1em; border-left: 3px solid #ccc; }

@@ -1,0 +1,124 @@
+---
+title: "1. The SIR model: a first next-generation matrix"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+This vignette introduces the workflow of `ReproductiveNumbers.jl` on the simplest
+compartmental model, the SIR model. The construction follows Diekmann, Heesterbeek and
+Roberts (2010), *The construction of next-generation matrices for compartmental epidemic
+models* (J. R. Soc. Interface 7:873–885).
+
+The idea is to look only at the *infected subsystem* (the compartments that can transmit
+or will transmit after progression), linearise it at the infection-free steady state, and
+split the resulting Jacobian into two parts:
+
+  - the **transmission matrix** `T`, whose entry `T[i, j]` is the rate at which an
+    individual in infected state `j` produces *new* infections in state `i`, and
+  - the **transition matrix** `Σ`, containing every other change of state (progression,
+    recovery, death), so that `-Σ⁻¹[i, j]` is the expected time an individual currently in
+    state `j` will spend in state `i`.
+
+The next-generation matrix with large domain is `K_L = -T Σ⁻¹`, and `R₀` is its spectral
+radius: the expected number of new infections produced by a typical infected individual over
+its whole infectious life.
+
+## The model
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters β γ N
+@variables S(t) I(t) R(t)
+eqs = [D(S) ~ -β * S * I / N,
+    D(I) ~ β * S * I / N - γ * I,
+    D(R) ~ γ * I]
+sir = complete(System(eqs, t; name = :sir))
+```
+
+## Building the next-generation matrix
+
+The only infected compartment is `I`. Without births or deaths every state with `I = 0` is
+a steady state, so the infection-free steady state is not unique and we have to say which
+one we mean: the fully susceptible population `S = N`.
+
+```{julia}
+ngm = next_generation_matrix(sir, [I]; equilibrium = Dict(S => N, R => 0))
+```
+
+The package classified the term `β S I / N` as a transmission (it involves the uninfected
+state `S`) and `-γ I` as a transition. The resulting matrices are `1 × 1`:
+
+```{julia}
+T, Σ = transmission_transition_matrices(ngm)
+T, Σ
+```
+
+`-Σ⁻¹ = 1/γ` is the mean infectious period and `T = β` the transmission rate at the
+infection-free steady state, so
+
+```{julia}
+basic_reproduction_number(ngm)
+```
+
+Every infected compartment here is a state-at-infection (an individual can be in it
+immediately after being infected):
+
+```{julia}
+states_at_infection(ngm)
+```
+
+## Numeric evaluation
+
+Given parameter values the same object gives a number:
+
+```{julia}
+p = Dict(β => 0.5, γ => 0.25, N => 1000.0)
+basic_reproduction_number(ngm, p)
+```
+
+or, equivalently, evaluate the whole decomposition and inspect the numeric matrices:
+
+```{julia}
+evaluate(ngm, p)
+```
+
+Parameter values can also be read from an `ODEProblem` built from the same system:
+
+```{julia}
+using OrdinaryDiffEqTsit5
+prob = ODEProblem(sir, [S => 999.0, I => 1.0, R => 0.0, β => 0.5, γ => 0.25, N => 1000.0],
+    (0.0, 60.0))
+basic_reproduction_number(ngm, prob)
+```
+
+## The threshold property
+
+`R₀ > 1` exactly when the infection-free steady state is unstable, so an epidemic can
+take off. We can confirm this by simulation:
+
+```{julia}
+using Plots
+plt = plot(xlabel = "time", ylabel = "I(t)", legend = :topright)
+for βval in (0.2, 0.25, 0.5)
+    prob_β = remake(prob; p = [β => βval])
+    sol = solve(prob_β, Tsit5())
+    plot!(plt, sol; idxs = I, label = "R₀ = $(basic_reproduction_number(ngm, prob_β))")
+end
+plt
+```
+
+## A reproduction number at any state
+
+The `equilibrium` keyword accepts any state. Leaving `S` symbolic gives the reproduction
+number when a fraction `S/N` of the population is susceptible, i.e. the effective
+reproduction number `R = R₀ S / N`:
+
+```{julia}
+ngm_S = next_generation_matrix(sir, [I]; equilibrium = Dict(R => 0))
+basic_reproduction_number(ngm_S)
+```
