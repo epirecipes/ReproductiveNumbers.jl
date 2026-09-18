@@ -2310,7 +2310,7 @@ vertical-align: -.125em;
 <span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>num <span class="op">=</span> <span class="fu">evaluate</span>(ngm, vals)</span>
 <span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>R0 <span class="op">=</span> <span class="fu">basic_reproduction_number</span>(num)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
-<pre><code>4.473504662512836</code></pre>
+<pre><code>4.473504662512838</code></pre>
 </div>
 </div>
 <p>The same number from the reciprocity-corrected contact matrix directly:</p>
@@ -2318,7 +2318,7 @@ vertical-align: -.125em;
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb6"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>Kdirect <span class="op">=</span> [<span class="fl">0.05</span> <span class="op">*</span> contacts[i, j] <span class="op">*</span> sizes[i] <span class="op">/</span> sizes[j] <span class="op">/</span> <span class="fl">0.2</span> for i <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span>n, j <span class="kw">in</span> <span class="fl">1</span><span class="op">:</span>n]</span>
 <span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="fu">maximum</span>(abs, <span class="fu">eigvals</span>(Kdirect))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
-<pre><code>4.473504662512838</code></pre>
+<pre><code>4.473504662512845</code></pre>
 </div>
 </div>
 </section>
