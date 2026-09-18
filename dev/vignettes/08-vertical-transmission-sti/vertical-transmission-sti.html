@@ -2386,7 +2386,7 @@ vertical-align: -.125em;
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb15"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">nz</span>(A) <span class="op">=</span> <span class="fu">sort</span>(<span class="fu">abs</span>.(<span class="fu">filter</span>(x <span class="op">-&gt;</span> <span class="fu">abs</span>(x) <span class="op">&gt;</span> <span class="fl">1e-9</span>, <span class="fu">eigvals</span>(A))))</span>
 <span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="fu">nz</span>(num.K), <span class="fu">nz</span>(ReproductiveNumbers.<span class="fu">to_number</span>.(<span class="fu">substitute</span>.(K_S, <span class="fu">Ref</span>(vals))))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
-<pre><code>([1.8143179196096737, 1.855563710855465], [1.8143179196096733, 1.8555637108554646])</code></pre>
+<pre><code>([1.814317919609674, 1.855563710855465], [1.8143179196096733, 1.8555637108554646])</code></pre>
 </div>
 </div>
 </section>
