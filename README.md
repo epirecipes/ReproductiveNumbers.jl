@@ -95,10 +95,10 @@ basic_reproduction_number(rn, [:E, :I])
   - Models written as plain Julia functions: `next_generation_matrix(F, V, x₀, p)` differentiates
     van den Driessche & Watmough's `𝓕` and `𝒱` with ForwardDiff.
   - `abbreviate(ngm)` rewrites the matrices in terms of named mean sojourn times `τ_x` and
-  transition probabilities `p_x_y` (so the SEIR `K` reads `β τ_I p_E_I`), or in terms of
-  user-defined quantities such as `R_E = β/(γ+μ)`; `expand_definitions` reverses it and
-  numeric evaluation accepts either set of parameters.
-- With Latexify loaded, `latexify(ngm)` renders the decomposition.
+    transition probabilities `p_x_y` (so the SEIR `K` reads `β τ_I p_E_I`), or in terms of
+    user-defined quantities such as `R_E = β/(γ+μ)`; `expand_definitions` reverses it and
+    numeric evaluation accepts either set of parameters.
+  - With Latexify loaded, `latexify(ngm)` renders the decomposition.
 
 ## Documentation and vignettes
 

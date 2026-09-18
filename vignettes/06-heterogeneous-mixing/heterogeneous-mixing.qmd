@@ -75,7 +75,8 @@ eliminated from the matrices:
 
 ```{julia}
 @parameters R₁ R₂
-ab2 = abbreviate(ngm, [R₁ => β₁₁ * ν₁ / ((ν₁ + μ) * (γ₁ + μ)), R₂ => β₂₂ * ν₂ / ((ν₂ + μ) * (γ₂ + μ))])
+ab2 = abbreviate(
+    ngm, [R₁ => β₁₁ * ν₁ / ((ν₁ + μ) * (γ₁ + μ)), R₂ => β₂₂ * ν₂ / ((ν₂ + μ) * (γ₂ + μ))])
 ab2.K
 ```
 
