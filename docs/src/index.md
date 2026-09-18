@@ -53,19 +53,22 @@ effective_reproduction_number(seir, [E, I])
 ```
 
 It can be evaluated along a simulated trajectory, or added to the system as an observed
-variable `Rt(t)` that the solver returns directly. Here `R_t` starts just below `R₀`
-(one individual is already infected) and falls as susceptibles are depleted; the number of
-infectious individuals peaks exactly when `R_t` crosses one:
+variable `Rt(t)` that the solver returns directly. For an SIR model `dI/dt = 0` is exactly
+`R_t = 1`, so the number of infectious individuals peaks at the moment `R_t` crosses one
+(with a latent stage, as in the SEIR model above, the peak of `I` lags the crossing):
 
 ```@example index
 using OrdinaryDiffEqTsit5, Plots
-p = Dict(β => 0.5, σ => 0.25, γ => 0.2, μ => 0.01, N => 1e3)
-seir_Rt, Rt = add_effective_reproduction_number(seir, [E, I])
-prob = ODEProblem(seir_Rt, [S => 999.0, E => 0.0, I => 1.0, R => 0.0, p...], (0.0, 120.0))
-sol = solve(prob, Tsit5(); saveat = 1.0)
+sir = complete(System([D(S) ~ -β * S * I / N, D(I) ~ β * S * I / N - γ * I, D(R) ~ γ * I],
+                      t; name = :sir))
+sir_Rt, Rt = add_effective_reproduction_number(sir, [I])
+p = Dict(β => 0.5, γ => 0.2, N => 1e3)
+prob = ODEProblem(sir_Rt, [S => 999.0, I => 1.0, R => 0.0, p...], (0.0, 100.0))
+sol = solve(prob, Tsit5(); saveat = 0.5)
+R0 = basic_reproduction_number(sir, [I], p; equilibrium = Dict(S => N))
 plt = plot(sol.t, sol[Rt]; label = "R_t", xlabel = "time (days)", ylabel = "R_t",
            linewidth = 2, legend = :topright, right_margin = 12Plots.mm)
-hline!(plt, [basic_reproduction_number(ngm, p)]; label = "R₀", linestyle = :dash, color = :black)
+hline!(plt, [R0]; label = "R₀", linestyle = :dash, color = :black)
 hline!(plt, [1.0]; label = "threshold", linestyle = :dot, color = :black)
 plot!(twinx(plt), sol.t, sol[I]; ylabel = "infectious", label = "I(t)", color = :red,
       linewidth = 2, legend = :right)
