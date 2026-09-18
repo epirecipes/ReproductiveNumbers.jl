@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>ReproductiveNumbers.jl: machine-checked mathematics</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    code{white-space: pre-wrap;}
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: min(4vw, 1.5em);}
+    div.column{flex: auto; overflow-x: auto;}
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+  </style>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">ReproductiveNumbers.jl: machine-checked
+mathematics</h1>
+</header>
+<nav id="TOC" role="doc-toc">
+<ul>
+<li><a href="#overview" id="toc-overview">Overview</a></li>
+<li><a
+href="#restricting-the-next-generation-matrix-to-states-at-infection"
+id="toc-restricting-the-next-generation-matrix-to-states-at-infection">Restricting
+the next-generation matrix to states-at-infection</a></li>
+<li><a href="#rank-one-next-generation-matrices"
+id="toc-rank-one-next-generation-matrices">Rank-one next-generation
+matrices</a></li>
+<li><a href="#block-triangular-next-generation-matrices"
+id="toc-block-triangular-next-generation-matrices">Block-triangular
+next-generation matrices</a></li>
+<li><a href="#the-spectral-radius-of-a-non-negative-2-2-matrix"
+id="toc-the-spectral-radius-of-a-non-negative-2-2-matrix">The spectral
+radius of a non-negative <code>2 × 2</code> matrix</a></li>
+<li><a href="#worked-examples" id="toc-worked-examples">Worked
+examples</a>
+<ul>
+<li><a href="#sir" id="toc-sir">SIR</a></li>
+<li><a href="#seir-with-demography" id="toc-seir-with-demography">SEIR
+with demography</a></li>
+<li><a href="#rossmacdonald-vector-borne-transmission"
+id="toc-rossmacdonald-vector-borne-transmission">Ross–Macdonald
+(vector-borne transmission)</a></li>
+<li><a
+href="#sei-with-two-latent-categories-diekmann-et-al.-2010-section-2.1"
+id="toc-sei-with-two-latent-categories-diekmann-et-al.-2010-section-2.1">SEI
+with two latent categories (Diekmann et al. 2010, section 2.1)</a></li>
+<li><a
+href="#two-sex-or-vectorhost-transmission-diekmann-et-al.-2010-section-4.1"
+id="toc-two-sex-or-vectorhost-transmission-diekmann-et-al.-2010-section-4.1">Two-sex
+or vector–host transmission (Diekmann et al. 2010, section 4.1)</a></li>
+</ul></li>
+</ul>
+</nav>
+<h1 id="overview">Overview</h1>
+<p>These Lean 4 files, checked against Mathlib, formalise the linear
+algebra behind <code>ReproductiveNumbers.jl</code>. The Julia package
+builds a next-generation matrix by splitting the linearised infected
+subsystem of a compartmental model into transmissions <code>T</code> and
+transitions <code>Σ</code> and forming <code>K_L = -T Σ⁻¹</code> and
+<code>K = Eᵀ K_L E</code> (Diekmann, Heesterbeek and Roberts, <em>J. R.
+Soc. Interface</em> 2010). It then returns <code>R₀</code> as the
+spectral radius of <code>K</code>, symbolically when a closed form
+exists. The proofs below cover exactly the steps the software relies
+on:</p>
+<ol type="1">
+<li><strong>Restriction</strong> (<code>Restriction.lean</code>):
+<code>K</code> and <code>K_L</code> have the same non-zero eigenvalues,
+so restricting to the states-at-infection loses nothing; and
+<code>det(T + Σ) = 0</code> exactly when <code>1</code> is an eigenvalue
+of <code>K_L</code>, which is the <code>R₀ = 1</code> threshold.</li>
+<li><strong>Rank one</strong> (<code>RankOne.lean</code>): when the
+states-at-infection are entered in fixed proportions the next-generation
+matrix has rank one and <code>R₀</code> is its trace.</li>
+<li><strong>Two by two</strong> (<code>TwoByTwo.lean</code>): the closed
+form <code>R₀ = (tr K + √((a - d)² + 4bc)) / 2</code> used for
+<code>2 × 2</code> blocks is a real eigenvalue, it dominates every other
+real eigenvalue, it reduces to <code>√(bc)</code> for vector–host and
+two-sex models, and <code>R₀ &gt; 1</code> iff <code>tr K &gt; 2</code>
+or the characteristic polynomial is negative at <code>1</code>.</li>
+<li><strong>Examples</strong> (<code>Examples.lean</code>): the SIR,
+SEIR, two-latent-stage and two-type models used in the package’s tests
+and vignettes, worked through explicitly.</li>
+</ol>
+<p>The documentation is generated from the Lean sources with <a
+href="https://github.com/Seasawher/mdgen">mdgen</a> and rendered with
+pandoc; every displayed declaration type-checks, and
+<code>scripts/check.sh</code> refuses <code>sorry</code>,
+<code>admit</code> and new axioms.</p>
+<pre class="lean"><code>import Mathlib.LinearAlgebra.Matrix.SchurComplement
+import Mathlib.LinearAlgebra.Matrix.NonsingularInverse</code></pre>
+<h1
+id="restricting-the-next-generation-matrix-to-states-at-infection">Restricting
+the next-generation matrix to states-at-infection</h1>
+<p>Diekmann, Heesterbeek and Roberts (2010) define the next-generation
+matrix with <em>large domain</em> <code>K_L = -T Σ⁻¹</code> and the
+next-generation matrix <code>K = -Eᵀ T Σ⁻¹ E</code>, where the columns
+of <code>E</code> are the unit vectors of the states-at-infection (the
+non-zero rows of <code>T</code>). They state that <code>K</code> and
+<code>K_L</code> have the same non-zero eigenvalues, so both give
+<code>R₀</code>.</p>
+<p>Because every row of <code>T</code> outside the states-at-infection
+vanishes, <code>T = E Eᵀ T</code>, hence
+<code>K_L = E · (Eᵀ (-T Σ⁻¹))</code> and
+<code>K = (Eᵀ (-T Σ⁻¹)) · E</code>. Writing <code>B = E</code> and
+<code>A = Eᵀ (-T Σ⁻¹)</code> this is the classical fact that
+<code>A B</code> and <code>B A</code> share their non-zero eigenvalues,
+which is what we prove here, in eigenvector form and in determinant
+form.</p>
+<pre class="lean"><code>namespace ReproductiveNumbersProofs
+
+open Matrix
+
+variable {m n : Type*} [Fintype m] [Fintype n]
+variable {R : Type*} [Field R]
+
+/-- If `x` is an eigenvector of `A * B` for a non-zero eigenvalue `μ`, then `B *ᵥ x` is a
+non-zero eigenvector of `B * A` for the same eigenvalue. -/
+theorem mul_comm_eigenvector (A : Matrix m n R) (B : Matrix n m R) {μ : R} (hμ : μ ≠ 0)
+    {x : m → R} (hx : x ≠ 0) (h : (A * B) *ᵥ x = μ • x) :
+    B *ᵥ x ≠ 0 ∧ (B * A) *ᵥ (B *ᵥ x) = μ • (B *ᵥ x) := by
+  refine ⟨?_, ?_⟩
+  · intro hBx
+    apply hx
+    have h&#39; : A *ᵥ (B *ᵥ x) = μ • x := by rw [Matrix.mulVec_mulVec]; exact h
+    rw [hBx, Matrix.mulVec_zero] at h&#39;
+    exact (smul_eq_zero.mp h&#39;.symm).resolve_left hμ
+  · calc (B * A) *ᵥ (B *ᵥ x) = B *ᵥ ((A * B) *ᵥ x) := by
+          simp only [Matrix.mulVec_mulVec, Matrix.mul_assoc]
+      _ = B *ᵥ (μ • x) := by rw [h]
+      _ = μ • (B *ᵥ x) := Matrix.mulVec_smul _ _ _
+
+/-- The non-zero eigenvalues of `A * B` and `B * A` coincide (eigenvector formulation). -/
+theorem mul_comm_hasEigenvalue_iff (A : Matrix m n R) (B : Matrix n m R) {μ : R} (hμ : μ ≠ 0) :
+    (∃ x : m → R, x ≠ 0 ∧ (A * B) *ᵥ x = μ • x) ↔
+      (∃ y : n → R, y ≠ 0 ∧ (B * A) *ᵥ y = μ • y) := by
+  constructor
+  · rintro ⟨x, hx, h⟩
+    exact ⟨B *ᵥ x, mul_comm_eigenvector A B hμ hx h⟩
+  · rintro ⟨y, hy, h⟩
+    exact ⟨A *ᵥ y, mul_comm_eigenvector B A hμ hy h⟩
+
+variable [DecidableEq m] [DecidableEq n]
+
+/-- Determinant formulation: for `μ ≠ 0`, `μ` is a root of the characteristic polynomial of
+`A * B` iff it is a root of the characteristic polynomial of `B * A`. -/
+theorem det_charmatrix_mul_comm (A : Matrix m n R) (B : Matrix n m R) {μ : R} (hμ : μ ≠ 0) :
+    det (μ • (1 : Matrix m m R) - A * B) = 0 ↔ det (μ • (1 : Matrix n n R) - B * A) = 0 := by
+  have h1 : μ • (1 : Matrix m m R) - A * B = μ • (1 - (μ⁻¹ • A) * B) := by
+    rw [smul_sub, ← Matrix.smul_mul, smul_smul, mul_inv_cancel₀ hμ, one_smul]
+  have h2 : (1 : Matrix n n R) - B * (μ⁻¹ • A) = μ⁻¹ • (μ • (1 : Matrix n n R) - B * A) := by
+    rw [Matrix.mul_smul, smul_sub, smul_smul, inv_mul_cancel₀ hμ, one_smul]
+  rw [h1, Matrix.det_smul, Matrix.det_one_sub_mul_comm, h2, Matrix.det_smul]
+  constructor
+  · intro h
+    rcases mul_eq_zero.mp h with h | h
+    · exact absurd h (pow_ne_zero _ hμ)
+    · rcases mul_eq_zero.mp h with h | h
+      · exact absurd h (pow_ne_zero _ (inv_ne_zero hμ))
+      · exact h
+  · intro h
+    rw [h]; ring
+
+/-- The Jacobian of the infected subsystem is `T + Σ = (K_L - 1) · (-Σ)` with `K_L = -T Σ⁻¹`.
+Hence `det (T + Σ) = 0` exactly when `1` is an eigenvalue of `K_L`: the threshold `R₀ = 1`
+coincides with the loss of stability of the infection-free steady state.  (`Σ` is a reserved
+token in Lean, so the transition matrix is written `Sg` in the code.) -/
+theorem det_jacobian_eq_det_ngm_sub_one (T Sg : Matrix n n R) (hS : IsUnit Sg.det) :
+    det (T + Sg) = det (-(T * Sg⁻¹) - 1) * det (-Sg) := by
+  have hfac : (-(T * Sg⁻¹) - 1) * (-Sg) = T + Sg := by
+    rw [sub_mul, neg_mul, Matrix.mul_neg, Matrix.mul_assoc, Matrix.nonsing_inv_mul _ hS,
+      Matrix.mul_one, neg_neg, one_mul, sub_neg_eq_add]
+  rw [← Matrix.det_mul, hfac]
+
+end ReproductiveNumbersProofs</code></pre>
+<pre class="lean"><code>import Mathlib.LinearAlgebra.Matrix.Trace
+import Mathlib.Data.Matrix.Mul
+import Mathlib.LinearAlgebra.Matrix.Notation
+import Mathlib.Tactic</code></pre>
+<h1 id="rank-one-next-generation-matrices">Rank-one next-generation
+matrices</h1>
+<p>When all states-at-infection are entered in fixed proportions (for
+instance an SEI model with two latent categories entered with
+probabilities <code>p</code> and <code>1 - p</code>, section 2.1 of
+Diekmann, Heesterbeek and Roberts 2010), the next-generation matrix
+<code>K</code> has rank one and <code>det K = 0</code>. Diekmann et
+al. then reduce to the <em>small domain</em> matrix <code>K_S</code>
+which is a scalar equal to the trace of <code>K</code>.</p>
+<p>Here we prove the linear-algebra fact used by
+<code>ReproductiveNumbers.jl</code> when it detects a rank-one block: if
+<code>K = u vᵀ</code> (entries <code>K i j = u i * v j</code>) then
+every eigenvalue of <code>K</code> is either <code>0</code> or
+<code>trace K = ∑ i, u i * v i</code>. Hence the spectral radius of a
+non-negative rank-one matrix is its trace, and
+<code>R₀ = trace K</code>.</p>
+<pre class="lean"><code>namespace ReproductiveNumbersProofs
+
+open Matrix Finset
+
+variable {n : Type*} [Fintype n] {R : Type*} [Field R]
+
+/-- Multiplying a vector by the rank-one matrix `u vᵀ` gives `(v ⬝ x) • u`. -/
+theorem vecMulVec_mulVec&#39; (u v x : n → R) :
+    (vecMulVec u v) *ᵥ x = (v ⬝ᵥ x) • u := by
+  ext i
+  simp only [Matrix.mulVec, Matrix.vecMulVec_apply, dotProduct, Pi.smul_apply, smul_eq_mul,
+    Finset.sum_mul, Finset.mul_sum]
+  exact Finset.sum_congr rfl fun j _ =&gt; by ring
+
+/-- The trace of `u vᵀ` is the inner product `v ⬝ᵥ u`. -/
+theorem trace_vecMulVec&#39; (u v : n → R) : (vecMulVec u v).trace = v ⬝ᵥ u := by
+  simp only [Matrix.trace, Matrix.diag_apply, Matrix.vecMulVec_apply, dotProduct]
+  exact Finset.sum_congr rfl fun i _ =&gt; by ring
+
+/-- Every eigenvalue of a rank-one matrix `u vᵀ` is `0` or its trace. -/
+theorem eigenvalue_vecMulVec (u v : n → R) {μ : R} {x : n → R} (hx : x ≠ 0)
+    (h : (vecMulVec u v) *ᵥ x = μ • x) : μ = 0 ∨ μ = (vecMulVec u v).trace := by
+  rw [vecMulVec_mulVec&#39;] at h
+  rw [trace_vecMulVec&#39;]
+  by_cases hvx : v ⬝ᵥ x = 0
+  · left
+    rw [hvx, zero_smul] at h
+    exact (smul_eq_zero.mp h.symm).resolve_right hx
+  · right
+    -- take the inner product of both sides with `v`
+    have h&#39; : v ⬝ᵥ ((v ⬝ᵥ x) • u) = v ⬝ᵥ (μ • x) := by rw [h]
+    rw [dotProduct_smul, dotProduct_smul, smul_eq_mul, smul_eq_mul] at h&#39;
+    -- `(v ⬝ x) * (v ⬝ u) = μ * (v ⬝ x)`, cancel the non-zero factor
+    have : (v ⬝ᵥ x) * (v ⬝ᵥ u) = (v ⬝ᵥ x) * μ := by rw [h&#39;, mul_comm]
+    exact (mul_left_cancel₀ hvx this).symm
+
+omit [Fintype n] in
+/-- A square matrix whose `2 × 2` minors all vanish and which has a non-zero row is of the form
+`u vᵀ`: this is the criterion the Julia code uses (all `2 × 2` minors zero) before applying the
+trace formula.  We record the direction used in the software: an explicit factorisation gives
+vanishing minors. -/
+theorem minors_vecMulVec (u v : n → R) (i j k l : n) :
+    (vecMulVec u v) i k * (vecMulVec u v) j l - (vecMulVec u v) i l * (vecMulVec u v) j k = 0 := by
+  simp only [Matrix.vecMulVec_apply]
+  ring
+
+/-- Converse for `2 × 2` matrices: a vanishing determinant (the single `2 × 2` minor)
+forces the rank-one form `u vᵀ`. Together with `eigenvalue_vecMulVec` this justifies the
+software&#39;s test &quot;all `2 × 2` minors vanish ⇒ `R₀ = trace K`&quot; for `2 × 2` blocks. -/
+theorem rank_one_of_det_eq_zero_fin_two (a b c d : ℝ) (h : a * d - b * c = 0) :
+    ∃ u v : Fin 2 → ℝ, !![a, b; c, d] = vecMulVec u v := by
+  by_cases ha : a = 0
+  · subst ha
+    have hbc : b * c = 0 := by linarith
+    rcases mul_eq_zero.mp hbc with hb | hc
+    · subst hb
+      refine ⟨![0, 1], ![c, d], ?_⟩
+      ext i j
+      fin_cases i &lt;;&gt; fin_cases j &lt;;&gt; simp [Matrix.vecMulVec_apply]
+    · subst hc
+      refine ⟨![b, d], ![0, 1], ?_⟩
+      ext i j
+      fin_cases i &lt;;&gt; fin_cases j &lt;;&gt; simp [Matrix.vecMulVec_apply]
+  · refine ⟨![a, c], ![1, b / a], ?_⟩
+    ext i j
+    fin_cases i &lt;;&gt; fin_cases j &lt;;&gt; simp [Matrix.vecMulVec_apply]
+    · field_simp
+    · field_simp
+      linear_combination h
+
+/-- Every eigenvalue of a singular `2 × 2` matrix is `0` or its trace `a + d`. -/
+theorem eigenvalue_fin_two_of_det_eq_zero (a b c d : ℝ) (h : a * d - b * c = 0) {μ : ℝ}
+    {x : Fin 2 → ℝ} (hx : x ≠ 0) (hμ : !![a, b; c, d] *ᵥ x = μ • x) :
+    μ = 0 ∨ μ = a + d := by
+  obtain ⟨u, v, huv⟩ := rank_one_of_det_eq_zero_fin_two a b c d h
+  rw [huv] at hμ
+  rcases eigenvalue_vecMulVec u v hx hμ with h0 | htr
+  · exact Or.inl h0
+  · right
+    rw [htr, ← huv, Matrix.trace_fin_two_of]
+
+end ReproductiveNumbersProofs</code></pre>
+<pre class="lean"><code>import Mathlib.LinearAlgebra.Matrix.Determinant.Basic
+import Mathlib.Data.Matrix.Block</code></pre>
+<h1 id="block-triangular-next-generation-matrices">Block-triangular
+next-generation matrices</h1>
+<p><code>ReproductiveNumbers.jl</code> permutes a next-generation matrix
+<code>K</code> into block upper triangular form using the strongly
+connected components of its non-zero pattern, computes the dominant
+eigenvalue of each irreducible diagonal block in closed form, and
+returns the maximum. This is legitimate because the characteristic
+polynomial of a block-triangular matrix is the product of the
+characteristic polynomials of its diagonal blocks, so its spectrum is
+the union of the spectra of the blocks; for a non-negative matrix the
+spectral radius is therefore the largest of the block spectral radii.
+Multi-strain models with no interaction between strains are the typical
+case.</p>
+<p>We prove the two-block statement; the general case follows by
+induction on the number of blocks.</p>
+<pre class="lean"><code>namespace ReproductiveNumbersProofs
+
+open Matrix
+
+variable {m n : Type*} [Fintype m] [Fintype n] [DecidableEq m] [DecidableEq n]
+variable {R : Type*} [CommRing R]
+
+/-- `μ • 1 - fromBlocks A B 0 D` is again block upper triangular. -/
+theorem charmatrix_fromBlocks (A : Matrix m m R) (B : Matrix m n R) (D : Matrix n n R)
+    (μ : R) :
+    μ • (1 : Matrix (m ⊕ n) (m ⊕ n) R) - fromBlocks A B 0 D =
+      fromBlocks (μ • (1 : Matrix m m R) - A) (-B) 0 (μ • (1 : Matrix n n R) - D) := by
+  rw [← fromBlocks_one, fromBlocks_smul, sub_eq_add_neg, fromBlocks_neg, fromBlocks_add]
+  simp [sub_eq_add_neg]
+
+/-- The characteristic polynomial of a block upper triangular matrix, evaluated at `μ`, is
+the product of those of its diagonal blocks. -/
+theorem det_charmatrix_fromBlocks (A : Matrix m m R) (B : Matrix m n R) (D : Matrix n n R)
+    (μ : R) :
+    det (μ • (1 : Matrix (m ⊕ n) (m ⊕ n) R) - fromBlocks A B 0 D) =
+      det (μ • (1 : Matrix m m R) - A) * det (μ • (1 : Matrix n n R) - D) := by
+  rw [charmatrix_fromBlocks, det_fromBlocks_zero₂₁]
+
+variable {F : Type*} [Field F]
+
+/-- `μ` is an eigenvalue (root of the characteristic polynomial) of a block upper triangular
+matrix iff it is an eigenvalue of one of the diagonal blocks. Hence the spectral radius of a
+non-negative block-triangular matrix is the maximum of the block spectral radii, which is
+the rule used by `ReproductiveNumbers.spectral_radius`. -/
+theorem det_charmatrix_fromBlocks_eq_zero_iff (A : Matrix m m F) (B : Matrix m n F)
+    (D : Matrix n n F) (μ : F) :
+    det (μ • (1 : Matrix (m ⊕ n) (m ⊕ n) F) - fromBlocks A B 0 D) = 0 ↔
+      det (μ • (1 : Matrix m m F) - A) = 0 ∨ det (μ • (1 : Matrix n n F) - D) = 0 := by
+  rw [det_charmatrix_fromBlocks, mul_eq_zero]
+
+end ReproductiveNumbersProofs</code></pre>
+<pre class="lean"><code>import Mathlib.LinearAlgebra.Matrix.Determinant.Basic
+import Mathlib.LinearAlgebra.Matrix.Notation
+import Mathlib.Data.Real.Sqrt
+import Mathlib.Tactic</code></pre>
+<h1 id="the-spectral-radius-of-a-non-negative-2-2-matrix">The spectral
+radius of a non-negative <code>2 × 2</code> matrix</h1>
+<p>Next-generation matrices with two states-at-infection are ubiquitous:
+two host types (section 2.2), vector–host transmission, or heterosexual
+transmission (section 4.1) in Diekmann, Heesterbeek and Roberts (2010).
+For such a matrix <code>K = !![a, b; c, d]</code> with non-negative
+entries the paper’s equation (2.12) gives</p>
+<p><code>R₀ = (trace K + √(trace K ^ 2 - 4 det K)) / 2</code>.</p>
+<p><code>ReproductiveNumbers.jl</code> uses exactly this formula for
+every irreducible <code>2 × 2</code> block. We verify that it is
+legitimate:</p>
+<ul>
+<li>the discriminant <code>trace² - 4 det = (a - d)² + 4 b c</code> is
+non-negative, so the square root is real;</li>
+<li>the formula is a root of the characteristic polynomial, i.e. an
+eigenvalue;</li>
+<li>it dominates every real eigenvalue in absolute value, so it is the
+spectral radius;</li>
+<li>when the diagonal vanishes (vector–host or two-sex models) it
+reduces to <code>√(b c)</code>;</li>
+<li>the threshold criterion
+<code>R₀ &gt; 1 ↔︎ trace K &gt; 2 ∨ 1 - trace K + det K &lt; 0</code>.</li>
+</ul>
+<pre class="lean"><code>namespace ReproductiveNumbersProofs
+
+open Matrix
+
+/-- The discriminant of the characteristic polynomial of `!![a, b; c, d]`. -/
+noncomputable def disc (a b c d : ℝ) : ℝ := (a + d) ^ 2 - 4 * (a * d - b * c)
+
+/-- Equation (2.12) of Diekmann et al.: the dominant eigenvalue of a `2 × 2` matrix. -/
+noncomputable def spectralRadius₂ (a b c d : ℝ) : ℝ :=
+  ((a + d) + Real.sqrt (disc a b c d)) / 2
+
+theorem disc_eq (a b c d : ℝ) : disc a b c d = (a - d) ^ 2 + 4 * (b * c) := by
+  unfold disc; ring
+
+/-- The discriminant is non-negative whenever the off-diagonal entries have the same sign. -/
+theorem disc_nonneg (a b c d : ℝ) (hbc : 0 ≤ b * c) : 0 ≤ disc a b c d := by
+  rw [disc_eq]
+  positivity
+
+theorem sq_sqrt_disc (a b c d : ℝ) (hbc : 0 ≤ b * c) :
+    Real.sqrt (disc a b c d) ^ 2 = disc a b c d :=
+  Real.sq_sqrt (disc_nonneg a b c d hbc)
+
+/-- `spectralRadius₂` is a root of the characteristic polynomial `λ² - (a + d) λ + (a d - b c)`. -/
+theorem spectralRadius₂_charpoly (a b c d : ℝ) (hbc : 0 ≤ b * c) :
+    spectralRadius₂ a b c d ^ 2 - (a + d) * spectralRadius₂ a b c d + (a * d - b * c) = 0 := by
+  have hs := sq_sqrt_disc a b c d hbc
+  unfold spectralRadius₂
+  unfold disc at hs ⊢
+  nlinarith [hs]
+
+/-- `spectralRadius₂ a b c d` is an eigenvalue of `!![a, b; c, d]`. -/
+theorem det_charmatrix_spectralRadius₂ (a b c d : ℝ) (hbc : 0 ≤ b * c) :
+    Matrix.det (spectralRadius₂ a b c d • (1 : Matrix (Fin 2) (Fin 2) ℝ) - !![a, b; c, d]) = 0 := by
+  have h := spectralRadius₂_charpoly a b c d hbc
+  rw [Matrix.det_fin_two, Matrix.one_fin_two]
+  simp
+  linear_combination h
+
+/-- Both bounds `-s ≤ 2 μ - (a + d) ≤ s` for a root `μ`, where `s = √disc`. -/
+theorem root_bounds (a b c d : ℝ) (hbc : 0 ≤ b * c) {μ : ℝ}
+    (hμ : μ ^ 2 - (a + d) * μ + (a * d - b * c) = 0) :
+    -Real.sqrt (disc a b c d) ≤ 2 * μ - (a + d) ∧
+      2 * μ - (a + d) ≤ Real.sqrt (disc a b c d) := by
+  have hs := sq_sqrt_disc a b c d hbc
+  have hnn := Real.sqrt_nonneg (disc a b c d)
+  have hsq : (2 * μ - (a + d)) ^ 2 = Real.sqrt (disc a b c d) ^ 2 := by
+    rw [hs]; unfold disc; linear_combination 4 * hμ
+  have h1 := sq_le_sq.mp (le_of_eq hsq)
+  rw [abs_of_nonneg hnn] at h1
+  exact abs_le.mp h1
+
+/-- Every real eigenvalue `μ` of `!![a, b; c, d]` satisfies `μ ≤ spectralRadius₂ a b c d`. -/
+theorem le_spectralRadius₂ (a b c d : ℝ) (hbc : 0 ≤ b * c) {μ : ℝ}
+    (hμ : μ ^ 2 - (a + d) * μ + (a * d - b * c) = 0) : μ ≤ spectralRadius₂ a b c d := by
+  have h := (root_bounds a b c d hbc hμ).2
+  unfold spectralRadius₂
+  linarith
+
+/-- For non-negative entries the dominant eigenvalue is non-negative. -/
+theorem spectralRadius₂_nonneg (a b c d : ℝ) (ha : 0 ≤ a) (hd : 0 ≤ d) (hbc : 0 ≤ b * c) :
+    0 ≤ spectralRadius₂ a b c d := by
+  unfold spectralRadius₂
+  have := Real.sqrt_nonneg (disc a b c d)
+  linarith
+
+/-- For non-negative entries every real eigenvalue `μ` satisfies `|μ| ≤ spectralRadius₂`, so
+`spectralRadius₂` is the spectral radius. -/
+theorem abs_le_spectralRadius₂ (a b c d : ℝ) (ha : 0 ≤ a) (hd : 0 ≤ d) (hbc : 0 ≤ b * c) {μ : ℝ}
+    (hμ : μ ^ 2 - (a + d) * μ + (a * d - b * c) = 0) : |μ| ≤ spectralRadius₂ a b c d := by
+  have h := root_bounds a b c d hbc hμ
+  have hnn := Real.sqrt_nonneg (disc a b c d)
+  rw [abs_le]
+  unfold spectralRadius₂
+  constructor &lt;;&gt; linarith [h.1, h.2]
+
+/-- Vector–host and two-sex models have a zero diagonal, and then `R₀ = √(b c)`: one
+&quot;generation&quot; is a host-to-vector-to-host cycle counted as two infections. -/
+theorem spectralRadius₂_zero_diag (b c : ℝ) (hbc : 0 ≤ b * c) :
+    spectralRadius₂ 0 b c 0 = Real.sqrt (b * c) := by
+  unfold spectralRadius₂ disc
+  have h4 : (0 + 0) ^ 2 - 4 * (0 * 0 - b * c) = 2 ^ 2 * (b * c) := by ring
+  rw [h4, Real.sqrt_mul (by positivity), Real.sqrt_sq (by norm_num)]
+  ring
+
+/-- The threshold criterion for a non-negative `2 × 2` next-generation matrix:
+`R₀ &gt; 1` iff `trace K &gt; 2` or the characteristic polynomial is negative at `1`. -/
+theorem one_lt_spectralRadius₂_iff (a b c d : ℝ) (hbc : 0 ≤ b * c) :
+    1 &lt; spectralRadius₂ a b c d ↔ 2 &lt; a + d ∨ 1 - (a + d) + (a * d - b * c) &lt; 0 := by
+  have hs := sq_sqrt_disc a b c d hbc
+  have hnn := Real.sqrt_nonneg (disc a b c d)
+  unfold spectralRadius₂
+  unfold disc at hs hnn ⊢
+  set s := Real.sqrt ((a + d) ^ 2 - 4 * (a * d - b * c)) with hsdef
+  constructor
+  · intro h
+    by_cases htr : 2 &lt; a + d
+    · exact Or.inl htr
+    · right
+      push Not at htr
+      -- `2 - (a + d) &lt; s` with both sides non-negative, so square
+      have h1 : 2 - (a + d) &lt; s := by linarith
+      nlinarith [hs, h1, htr, hnn]
+  · rintro (h | h)
+    · linarith
+    · by_cases htr : 2 &lt; a + d
+      · linarith
+      · push Not at htr
+        -- `(2 - (a + d))² &lt; s²` and `s ≥ 0`, so `2 - (a + d) &lt; s`
+        have hlt : (2 - (a + d)) ^ 2 &lt; s ^ 2 := by rw [hs]; nlinarith
+        have : 2 - (a + d) &lt; s := by
+          by_contra hcon
+          push Not at hcon
+          nlinarith [hcon, hnn]
+        linarith
+
+end ReproductiveNumbersProofs</code></pre>
+<pre class="lean"><code>import ReproductiveNumbersProofs.Restriction
+import ReproductiveNumbersProofs.RankOne
+import ReproductiveNumbersProofs.TwoByTwo</code></pre>
+<h1 id="worked-examples">Worked examples</h1>
+<p>The next-generation matrices that <code>ReproductiveNumbers.jl</code>
+derives for the models used in its vignettes and tests, checked
+symbolically in Lean. Each example fixes the transmission matrix
+<code>T</code> and the transition matrix <code>Σ</code> (written
+<code>Sg</code> because <code>Σ</code> is a Lean token), exhibits the
+inverse of <code>Σ</code>, and computes <code>K_L = -T Σ⁻¹</code> and
+<code>K = Eᵀ K_L E</code>.</p>
+<pre class="lean"><code>namespace ReproductiveNumbersProofs
+
+open Matrix
+
+noncomputable section</code></pre>
+<h2 id="sir">SIR</h2>
+<p>For <code>İ = β S I / N - γ I</code> linearised at
+<code>S = N</code>: <code>T = [β]</code>, <code>Σ = [-γ]</code>,
+<code>R₀ = β / γ</code>.</p>
+<pre class="lean"><code>section SIR
+
+variable (β γ : ℝ)
+
+def sirT : Matrix (Fin 1) (Fin 1) ℝ := !![β]
+def sirSg : Matrix (Fin 1) (Fin 1) ℝ := !![-γ]
+
+theorem sirSg_inv (hγ : γ ≠ 0) : (sirSg γ)⁻¹ = !![-1 / γ] := by
+  apply Matrix.inv_eq_right_inv
+  ext i j
+  fin_cases i; fin_cases j
+  simp [sirSg, Matrix.mul_apply]
+  field_simp
+
+theorem sir_ngm (hγ : γ ≠ 0) : -(sirT β * (sirSg γ)⁻¹) = !![β / γ] := by
+  rw [sirSg_inv γ hγ]
+  ext i j
+  fin_cases i; fin_cases j
+  simp [sirT, Matrix.mul_apply]
+  ring
+
+end SIR</code></pre>
+<h2 id="seir-with-demography">SEIR with demography</h2>
+<p>Infected states <code>(E, I)</code>,
+<code>Ė = β S I / N - (σ + μ) E</code>,
+<code>İ = σ E - (γ + μ) I</code>, linearised at <code>S = N</code>,
+exactly as in the package’s second vignette. Only <code>E</code> is a
+state-at-infection, so <code>K</code> is the scalar
+<code>β σ / ((σ + μ)(γ + μ))</code> even though <code>K_L</code> is
+<code>2 × 2</code>.</p>
+<pre class="lean"><code>section SEIR
+
+variable (β σ γ μ : ℝ)
+
+def seirT : Matrix (Fin 2) (Fin 2) ℝ := !![0, β; 0, 0]
+def seirSg : Matrix (Fin 2) (Fin 2) ℝ := !![-(σ + μ), 0; σ, -(γ + μ)]
+def seirSgInv : Matrix (Fin 2) (Fin 2) ℝ :=
+  !![-1 / (σ + μ), 0; -σ / ((σ + μ) * (γ + μ)), -1 / (γ + μ)]
+/-- Selection matrix of the single state-at-infection `E`. -/
+def seirE : Matrix (Fin 2) (Fin 1) ℝ := !![1; 0]
+/-- The next-generation matrix with large domain, as computed by the package. -/
+def seirKL : Matrix (Fin 2) (Fin 2) ℝ :=
+  !![β * σ / ((σ + μ) * (γ + μ)), β / (γ + μ); 0, 0]
+/-- The next-generation matrix, `R₀` as a `1 × 1` matrix. -/
+def seirK : Matrix (Fin 1) (Fin 1) ℝ := !![β * σ / ((σ + μ) * (γ + μ))]
+
+theorem seirSg_mul_inv (hσ : σ + μ ≠ 0) (hγ : γ + μ ≠ 0) :
+    seirSg σ γ μ * seirSgInv σ γ μ = 1 := by
+  ext i j
+  fin_cases i &lt;;&gt; fin_cases j &lt;;&gt;
+    simp [seirSg, seirSgInv, Matrix.mul_apply, Fin.sum_univ_two] &lt;;&gt; field_simp &lt;;&gt; ring
+
+theorem seirSg_inv (hσ : σ + μ ≠ 0) (hγ : γ + μ ≠ 0) :
+    (seirSg σ γ μ)⁻¹ = seirSgInv σ γ μ :=
+  Matrix.inv_eq_right_inv (seirSg_mul_inv σ γ μ hσ hγ)
+
+/-- `K_L = -T Σ⁻¹` for the SEIR model with demography. -/
+theorem seir_KL (hσ : σ + μ ≠ 0) (hγ : γ + μ ≠ 0) :
+    -(seirT β * (seirSg σ γ μ)⁻¹) = seirKL β σ γ μ := by
+  rw [seirSg_inv σ γ μ hσ hγ]
+  ext i j
+  fin_cases i &lt;;&gt; fin_cases j &lt;;&gt; simp [seirT, seirSgInv, seirKL] &lt;;&gt; ring
+
+/-- Restricting to the state-at-infection gives the scalar `β σ / ((σ + μ)(γ + μ))`. -/
+theorem seir_K : (seirE)ᵀ * seirKL β σ γ μ * seirE = seirK β σ γ μ := by
+  ext i j
+  fin_cases i; fin_cases j
+  simp [seirE, seirKL, seirK, Matrix.mul_apply, Fin.sum_univ_two]
+
+/-- `K_L` factorises through `E`, which is what makes `K` and `K_L` share their non-zero
+spectrum (`mul_comm_hasEigenvalue_iff`). -/
+theorem seir_KL_factor : seirE * ((seirE)ᵀ * seirKL β σ γ μ) = seirKL β σ γ μ := by
+  ext i j
+  fin_cases i &lt;;&gt; fin_cases j &lt;;&gt; simp [seirE, seirKL, Matrix.mul_apply, Fin.sum_univ_two]
+
+/-- The non-zero eigenvalues of `K_L` are those of `K`. -/
+theorem seir_eigen_iff {ν : ℝ} (hν : ν ≠ 0) :
+    (∃ x : Fin 2 → ℝ, x ≠ 0 ∧ seirKL β σ γ μ *ᵥ x = ν • x) ↔
+      (∃ y : Fin 1 → ℝ, y ≠ 0 ∧ seirK β σ γ μ *ᵥ y = ν • y) := by
+  have hKL : seirKL β σ γ μ = seirE * ((seirE)ᵀ * seirKL β σ γ μ) :=
+    (seir_KL_factor β σ γ μ).symm
+  have hK : seirK β σ γ μ = ((seirE)ᵀ * seirKL β σ γ μ) * seirE := (seir_K β σ γ μ).symm
+  conv_lhs =&gt; rw [hKL]
+  conv_rhs =&gt; rw [hK]
+  exact (mul_comm_hasEigenvalue_iff ((seirE)ᵀ * seirKL β σ γ μ) seirE hν).symm
+
+/-- The characteristic polynomial of `K_L` is `ν (ν - R₀)`. -/
+theorem seir_charpoly (ν : ℝ) :
+    Matrix.det (ν • (1 : Matrix (Fin 2) (Fin 2) ℝ) - seirKL β σ γ μ) =
+      ν * (ν - β * σ / ((σ + μ) * (γ + μ))) := by
+  rw [Matrix.det_fin_two]
+  simp [Matrix.one_fin_two, seirKL]
+  ring
+
+end SEIR</code></pre>
+<h2 id="rossmacdonald-vector-borne-transmission">Ross–Macdonald
+(vector-borne transmission)</h2>
+<p>Infected states <code>(I_H, I_V)</code>: humans are infected by
+mosquitoes at rate <code>a b I_V / N_H</code> per susceptible human,
+mosquitoes by humans at rate <code>a c I_H / N_H</code> per susceptible
+mosquito; humans recover at rate <code>γ</code> and mosquitoes die at
+rate <code>μ_V</code>. Linearised at <code>S_H = N_H</code>,
+<code>S_V = N_V</code>. Both states are states-at-infection and
+<code>K</code> has a zero diagonal, so <code>R₀ = √(K₁₂ K₂₁)</code>, as
+in the package’s fourth vignette. (Identifiers are ASCII:
+<code>NH</code>, <code>NV</code>, <code>gam</code>,
+<code>muV</code>.)</p>
+<pre class="lean"><code>section RossMacdonald
+
+variable (a b c NH NV gam muV : ℝ)
+
+def rmT : Matrix (Fin 2) (Fin 2) ℝ := !![0, a * b; a * c * NV / NH, 0]
+def rmSg : Matrix (Fin 2) (Fin 2) ℝ := !![-gam, 0; 0, -muV]
+def rmSgInv : Matrix (Fin 2) (Fin 2) ℝ := !![-1 / gam, 0; 0, -1 / muV]
+/-- The next-generation matrix: `K₁₂ = a b / μ_V`, `K₂₁ = a c N_V / (N_H γ)`. -/
+def rmK : Matrix (Fin 2) (Fin 2) ℝ := !![0, a * b / muV; a * c * NV / (NH * gam), 0]
+
+theorem rmSg_mul_inv (hg : gam ≠ 0) (hm : muV ≠ 0) : rmSg gam muV * rmSgInv gam muV = 1 := by
+  ext i j
+  fin_cases i &lt;;&gt; fin_cases j &lt;;&gt;
+    simp [rmSg, rmSgInv, Matrix.mul_apply, Fin.sum_univ_two] &lt;;&gt; field_simp
+
+theorem rmSg_inv (hg : gam ≠ 0) (hm : muV ≠ 0) : (rmSg gam muV)⁻¹ = rmSgInv gam muV :=
+  Matrix.inv_eq_right_inv (rmSg_mul_inv gam muV hg hm)
+
+/-- `K = -T Σ⁻¹`; both rows of `T` are non-zero so `K_L = K`. -/
+theorem rm_K (hg : gam ≠ 0) (hm : muV ≠ 0) :
+    -(rmT a b c NH NV * (rmSg gam muV)⁻¹) = rmK a b c NH NV gam muV := by
+  rw [rmSg_inv gam muV hg hm]
+  ext i j
+  fin_cases i &lt;;&gt; fin_cases j &lt;;&gt; simp [rmT, rmSgInv, rmK] &lt;;&gt; ring
+
+/-- `R₀ = √(a² b c N_V / (N_H γ μ_V))`. -/
+theorem rm_R0 (hbc : 0 ≤ (a * b / muV) * (a * c * NV / (NH * gam))) :
+    spectralRadius₂ 0 (a * b / muV) (a * c * NV / (NH * gam)) 0 =
+      Real.sqrt (a ^ 2 * b * c * NV / (NH * gam * muV)) := by
+  rw [spectralRadius₂_zero_diag _ _ hbc]
+  congr 1
+  ring
+
+end RossMacdonald</code></pre>
+<h2
+id="sei-with-two-latent-categories-diekmann-et-al.-2010-section-2.1">SEI
+with two latent categories (Diekmann et al. 2010, section 2.1)</h2>
+<p>New infections enter <code>E₁</code> with probability <code>p</code>
+and <code>E₂</code> with probability <code>1 - p</code>; the
+transmission matrix has rank one and
+<code>R₀ = trace K = p ν₁ β / ((ν₁ + μ)(γ + μ)) + (1 - p) ν₂ β / ((ν₂ + μ)(γ + μ))</code>.</p>
+<pre class="lean"><code>section TwoLatent
+
+variable (β p ν₁ ν₂ γ μ : ℝ)
+
+def latT : Matrix (Fin 3) (Fin 3) ℝ := !![0, 0, β * p; 0, 0, β * (1 - p); 0, 0, 0]
+def latSg : Matrix (Fin 3) (Fin 3) ℝ :=
+  !![-(ν₁ + μ), 0, 0; 0, -(ν₂ + μ), 0; ν₁, ν₂, -(γ + μ)]
+def latSgInv : Matrix (Fin 3) (Fin 3) ℝ :=
+  !![-1 / (ν₁ + μ), 0, 0;
+     0, -1 / (ν₂ + μ), 0;
+     -ν₁ / ((ν₁ + μ) * (γ + μ)), -ν₂ / ((ν₂ + μ) * (γ + μ)), -1 / (γ + μ)]
+
+theorem latSg_mul_inv (h₁ : ν₁ + μ ≠ 0) (h₂ : ν₂ + μ ≠ 0) (h₃ : γ + μ ≠ 0) :
+    latSg ν₁ ν₂ γ μ * latSgInv ν₁ ν₂ γ μ = 1 := by
+  ext i j
+  fin_cases i &lt;;&gt; fin_cases j &lt;;&gt;
+    simp [latSg, latSgInv, Matrix.mul_apply, Fin.sum_univ_three] &lt;;&gt; field_simp &lt;;&gt; ring
+
+theorem latSg_inv (h₁ : ν₁ + μ ≠ 0) (h₂ : ν₂ + μ ≠ 0) (h₃ : γ + μ ≠ 0) :
+    (latSg ν₁ ν₂ γ μ)⁻¹ = latSgInv ν₁ ν₂ γ μ :=
+  Matrix.inv_eq_right_inv (latSg_mul_inv ν₁ ν₂ γ μ h₁ h₂ h₃)
+
+/-- The column and row of the rank-one factorisation `K_L = u vᵀ`. -/
+def latU : Fin 3 → ℝ := ![β * p, β * (1 - p), 0]
+def latV : Fin 3 → ℝ :=
+  ![ν₁ / ((ν₁ + μ) * (γ + μ)), ν₂ / ((ν₂ + μ) * (γ + μ)), 1 / (γ + μ)]
+
+/-- `K_L = -T Σ⁻¹` is the rank-one matrix `u vᵀ`. -/
+theorem lat_KL (h₁ : ν₁ + μ ≠ 0) (h₂ : ν₂ + μ ≠ 0) (h₃ : γ + μ ≠ 0) :
+    -(latT β p * (latSg ν₁ ν₂ γ μ)⁻¹) = vecMulVec (latU β p) (latV ν₁ ν₂ γ μ) := by
+  rw [latSg_inv ν₁ ν₂ γ μ h₁ h₂ h₃]
+  ext i j
+  fin_cases i &lt;;&gt; fin_cases j &lt;;&gt;
+    simp [latT, latSgInv, latU, latV, Matrix.vecMulVec_apply] &lt;;&gt; field_simp
+
+/-- Hence every non-zero eigenvalue of `K_L`, in particular `R₀`, equals the trace
+`p ν₁ β / ((ν₁ + μ)(γ + μ)) + (1 - p) ν₂ β / ((ν₂ + μ)(γ + μ))`. -/
+theorem lat_R0 (h₁ : ν₁ + μ ≠ 0) (h₂ : ν₂ + μ ≠ 0) (h₃ : γ + μ ≠ 0) {ρ : ℝ} (hρ : ρ ≠ 0)
+    {x : Fin 3 → ℝ} (hx : x ≠ 0)
+    (h : (-(latT β p * (latSg ν₁ ν₂ γ μ)⁻¹)) *ᵥ x = ρ • x) :
+    ρ = β * p * ν₁ / ((ν₁ + μ) * (γ + μ)) + β * (1 - p) * ν₂ / ((ν₂ + μ) * (γ + μ)) := by
+  rw [lat_KL β p ν₁ ν₂ γ μ h₁ h₂ h₃] at h
+  rcases eigenvalue_vecMulVec _ _ hx h with h0 | htr
+  · exact absurd h0 hρ
+  · rw [htr, trace_vecMulVec&#39;]
+    simp [latU, latV, dotProduct, Fin.sum_univ_three]
+    ring
+
+end TwoLatent</code></pre>
+<h2
+id="two-sex-or-vectorhost-transmission-diekmann-et-al.-2010-section-4.1">Two-sex
+or vector–host transmission (Diekmann et al. 2010, section 4.1)</h2>
+<p>With no within-type transmission <code>K = !![0, k₁₂; k₂₁, 0]</code>
+and <code>R₀ = √(k₁₂ k₂₁)</code>.</p>
+<pre class="lean"><code>section TwoType
+
+theorem two_type_R0 (k₁₂ k₂₁ : ℝ) (h : 0 ≤ k₁₂ * k₂₁) :
+    spectralRadius₂ 0 k₁₂ k₂₁ 0 = Real.sqrt (k₁₂ * k₂₁) :=
+  spectralRadius₂_zero_diag k₁₂ k₂₁ h
+
+/-- With the explicit entries of section 4.1. -/
+theorem sti_R0 (β₁ β₂ ν₁ ν₂ γ₁ γ₂ μ : ℝ)
+    (h : 0 ≤ (β₁ * ν₂ / ((ν₂ + μ) * (γ₁ + μ))) * (β₂ * ν₁ / ((ν₁ + μ) * (γ₂ + μ)))) :
+    spectralRadius₂ 0 (β₁ * ν₂ / ((ν₂ + μ) * (γ₁ + μ))) (β₂ * ν₁ / ((ν₁ + μ) * (γ₂ + μ))) 0 =
+      Real.sqrt ((β₁ * ν₂ / ((ν₂ + μ) * (γ₁ + μ))) * (β₂ * ν₁ / ((ν₁ + μ) * (γ₂ + μ)))) :=
+  spectralRadius₂_zero_diag _ _ h
+
+end TwoType
+
+end
+
+end ReproductiveNumbersProofs</code></pre>
+</body>
+</html>
