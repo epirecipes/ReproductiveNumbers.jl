@@ -1,7 +1,8 @@
 # ReproductiveNumbers.jl
 
-*Next-generation matrices and reproduction numbers for compartmental epidemic models
-written with [ModelingToolkit.jl](https://docs.sciml.ai/ModelingToolkit/stable/) or
+*Next-generation matrices, the basic reproduction number `R₀` and the effective
+reproduction number `R_t` for compartmental epidemic models written with
+[ModelingToolkit.jl](https://docs.sciml.ai/ModelingToolkit/stable/) or
 [Catalyst.jl](https://docs.sciml.ai/Catalyst/stable/), computed symbolically where a
 closed form exists and numerically otherwise.*
 
@@ -43,6 +44,26 @@ basic_reproduction_number(ngm)
 basic_reproduction_number(ngm, Dict(β => 0.5, σ => 0.25, γ => 0.2, μ => 0.01, N => 1e3))
 ```
 
+The effective reproduction number `R_t` is the same construction linearised at the
+current state instead of the infection-free steady state, so it is a function of the
+uninfected compartments:
+
+```@example index
+effective_reproduction_number(seir, [E, I])
+```
+
+It can be evaluated along a simulated trajectory, or added to the system as an observed
+variable `Rt(t)` that the solver returns directly:
+
+```@example index
+using OrdinaryDiffEqTsit5
+seir_Rt, Rt = add_effective_reproduction_number(seir, [E, I])
+prob = ODEProblem(seir_Rt, [S => 999.0, E => 0.0, I => 1.0, R => 0.0,
+                            β => 0.5, σ => 0.25, γ => 0.2, μ => 0.01, N => 1e3], (0.0, 120.0))
+sol = solve(prob, Tsit5(); saveat = 30.0)
+sol[Rt]
+```
+
 ## What the package provides
 
   - [`next_generation_matrix`](@ref) splits the linearised infected subsystem into a
@@ -54,11 +75,21 @@ basic_reproduction_number(ngm, Dict(β => 0.5, σ => 0.25, γ => 0.2, μ => 0.01
     [Choosing what counts as a transmission](@ref).
   - [`basic_reproduction_number`](@ref) returns `R₀` in closed form when the
     next-generation matrix decomposes into irreducible blocks that are `1 × 1`, rank one or
-    `2 × 2`, and otherwise throws a [`NoClosedFormError`](@ref); with parameter values it
-    always returns a number.
-  - [`type_reproduction_number`](@ref), [`small_domain_matrix`](@ref),
-    [`characteristic_polynomial`](@ref), [`spectral_radius`](@ref),
-    [`validate_decomposition`](@ref) and [`evaluate`](@ref) for further analysis.
+    `2 × 2` (or when the small-domain matrix does), and otherwise throws a
+    [`NoClosedFormError`](@ref); with parameter values it always returns a number.
+  - [`effective_reproduction_number`](@ref) returns `R_t` as a closed-form function of the
+    state (also with time-varying rates), evaluates it at a state or at a time of a
+    solution, or along a whole trajectory; [`add_effective_reproduction_number`](@ref)
+    adds `Rt(t)` to a system as an observed variable.
+  - [`abbreviate`](@ref) rewrites the matrices in terms of named sojourn times, transition
+    probabilities and transmission rates, or of your own definitions, so that they read the
+    way the paper derives them.
+  - [`type_reproduction_number`](@ref) for targeted control, [`sensitivities`](@ref) and
+    [`elasticities`](@ref) of `R₀`, [`perron_vectors`](@ref), [`mean_sojourn_times`](@ref),
+    [`small_domain_matrix`](@ref), [`characteristic_polynomial`](@ref),
+    [`suggest_infected`](@ref), [`validate_decomposition`](@ref) and [`evaluate`](@ref)
+    for further analysis, and a ForwardDiff-based constructor for models written as plain
+    Julia functions.
 
 ## Where to go next
 
