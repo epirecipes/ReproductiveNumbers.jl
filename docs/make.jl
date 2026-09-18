@@ -42,7 +42,7 @@ makedocs(;
     format = Documenter.HTML(;
         prettyurls = get(ENV, "CI", nothing) == "true",
         edit_link = "main",
-        canonical = "https://epirecipes.github.io/ReproductiveNumbers.jl",
+        canonical = "https://epirecip.es/ReproductiveNumbers.jl",
         assets = String[],
         size_threshold = 400 * 1024,
         size_threshold_warn = 200 * 1024),

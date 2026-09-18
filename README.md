@@ -1,7 +1,7 @@
 # ReproductiveNumbers.jl
 
-[![Stable docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://epirecipes.github.io/ReproductiveNumbers.jl/stable/)
-[![Dev docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://epirecipes.github.io/ReproductiveNumbers.jl/dev/)
+[![Stable docs](https://img.shields.io/badge/docs-stable-blue.svg)](https://epirecip.es/ReproductiveNumbers.jl/stable/)
+[![Dev docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://epirecip.es/ReproductiveNumbers.jl/dev/)
 [![CI](https://github.com/epirecipes/ReproductiveNumbers.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/epirecipes/ReproductiveNumbers.jl/actions/workflows/CI.yml)
 [![Lean proofs](https://github.com/epirecipes/ReproductiveNumbers.jl/actions/workflows/Proofs.yml/badge.svg)](https://github.com/epirecipes/ReproductiveNumbers.jl/actions/workflows/Proofs.yml)
 [![SciML Code Style](https://img.shields.io/static/v1?label=code%20style&message=SciML&color=9558b2&labelColor=389826)](https://github.com/SciML/SciMLStyle)
@@ -102,7 +102,7 @@ basic_reproduction_number(rn, [:E, :I])
 
 ## Documentation and vignettes
 
-The documentation site ([https://epirecipes.github.io/ReproductiveNumbers.jl/dev/](https://epirecipes.github.io/ReproductiveNumbers.jl/dev/)) has a
+The documentation site ([https://epirecip.es/ReproductiveNumbers.jl/dev/](https://epirecip.es/ReproductiveNumbers.jl/dev/)) has a
 mathematical background page, a tutorial, a guide to choosing what counts as a
 transmission, the API reference, the rendered vignettes and the rendered Lean proofs. It
 is built by the `Documentation` workflow on every push to `main` (and previews for pull
