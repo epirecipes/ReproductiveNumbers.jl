@@ -168,15 +168,23 @@ elasticities(ngm)
 mean_sojourn_times(ngm)
 ```
 
-Leaving the uninfected states symbolic gives a reproduction number at any state, which
-can then be evaluated along a simulated trajectory:
+The effective reproduction number `R_t` is the same construction linearised at the current
+state rather than at the infection-free steady state, so it is a function of the uninfected
+states:
+
+```@example tutorial
+Rt = effective_reproduction_number(seir, [E, I])
+```
+
+It can be evaluated at a state, or along a simulated trajectory, or added to the system as
+an observed variable that the solver returns directly:
 
 ```@example tutorial
 using OrdinaryDiffEqTsit5
-ngm_t = next_generation_matrix(seir, [E, I]; equilibrium = Dict())
-prob = ODEProblem(seir, [S => 999.0, E => 0.0, I => 1.0, R => 0.0, p...], (0.0, 120.0))
+seir_Rt, Rtvar = add_effective_reproduction_number(seir, [E, I])
+prob = ODEProblem(seir_Rt, [S => 999.0, E => 0.0, I => 1.0, R => 0.0, p...], (0.0, 120.0))
 sol = solve(prob, Tsit5(); saveat = 30.0)
-effective_reproduction_number(ngm_t, sol)
+sol[Rtvar]
 ```
 
 ## Building from `T` and `Σ` directly

@@ -112,20 +112,103 @@ end
     @test evaluate(ngm, p).K * un ≈ basic_reproduction_number(ngm, p) * un
 end
 
-@testset "effective_reproduction_number along a solution" begin
+@testset "effective reproduction number R_t" begin
     s = sir_model()
+    # symbolic R_t as a function of the state
+    Rt = effective_reproduction_number(s.sys, [s.I])
+    @test symbolic_isequal(Rt, s.β * s.S / (s.γ * s.N))
     ngm = next_generation_matrix(s.sys, [s.I]; equilibrium = Dict())
-    @test symbolic_isequal(basic_reproduction_number(ngm), s.β * s.S / (s.γ * s.N))
+    @test symbolic_isequal(effective_reproduction_number(ngm), Rt)
+    # at a given state: partial and complete
+    @test symbolic_isequal(
+        effective_reproduction_number(ngm, Dict(s.S => s.N / 2)), s.β / (2 * s.γ))
+    @test effective_reproduction_number(
+        ngm, [s.S => 500.0, s.β => 0.5, s.γ => 0.25, s.N => 1000.0]) ≈ 1.0
+    # some states fixed at construction
+    @test symbolic_isequal(
+        effective_reproduction_number(s.sys, [s.I]; equilibrium = Dict(s.S => s.N)),
+        s.β / s.γ)
+    # along a solution
     prob = ODEProblem(s.sys,
         [s.S => 990.0, s.I => 10.0, s.R => 0.0, s.β => 0.5, s.γ => 0.25, s.N => 1000.0],
         (0.0, 30.0))
     sol = solve(prob, Tsit5(); saveat = 5.0)
-    Rt = effective_reproduction_number(ngm, sol)
-    @test length(Rt) == length(sol.t)
-    @test Rt[1] ≈ 2.0 * 0.99
-    @test issorted(Rt; rev = true)
+    traj = effective_reproduction_number(ngm, sol)
+    @test length(traj) == length(sol.t)
+    @test traj[1] ≈ 2.0 * 0.99
+    @test issorted(traj; rev = true)
     @test effective_reproduction_number(ngm, sol, 10.0) ≈ 2.0 * sol(10.0; idxs = s.S) / 1000
-    @test effective_reproduction_number(ngm, sol, [0.0, 30.0]) ≈ [Rt[1], Rt[end]]
+    @test effective_reproduction_number(ngm, sol, [0.0, 30.0]) ≈ [traj[1], traj[end]]
+    # as an observed variable of the system
+    sys2, Rtvar = add_effective_reproduction_number(s.sys, [s.I])
+    @test string(Rtvar) == "Rt(t)"
+    prob2 = ODEProblem(sys2,
+        [s.S => 990.0, s.I => 10.0, s.R => 0.0, s.β => 0.5, s.γ => 0.25, s.N => 1000.0],
+        (0.0, 30.0))
+    sol2 = solve(prob2, Tsit5(); saveat = 5.0)
+    @test sol2[Rtvar] ≈ traj
+    @test sol2(10.0; idxs = Rtvar) ≈ effective_reproduction_number(ngm, sol, 10.0)
+    sys3, Rvar3 = add_effective_reproduction_number(s.sys, [s.I]; name = :Reff)
+    @test string(Rvar3) == "Reff(t)"
+    # a model without closed form works numerically at a state but not symbolically
+    @parameters β[1:3, 1:3] γ N[1:3]
+    βm, Nv = collect(β), collect(N)
+    @variables S(t)[1:3] I(t)[1:3]
+    Sv, Iv = collect(S), collect(I)
+    eqs = [[D(Sv[i]) ~ -Sv[i] * sum(βm[i, j] * Iv[j] / Nv[j] for j in 1:3) for i in 1:3];
+           [D(Iv[i]) ~ Sv[i] * sum(βm[i, j] * Iv[j] / Nv[j] for j in 1:3) - γ * Iv[i]
+            for i in 1:3]]
+    age = complete(System(eqs, t; name = :age))
+    @test_throws NoClosedFormError effective_reproduction_number(age, Iv)
+    ngm_age = next_generation_matrix(age, Iv; equilibrium = Dict())
+    B = [1.0 0.5 0.2; 0.5 1.5 0.4; 0.2 0.4 0.8]
+    vals = Dict{Any, Any}(βm[i, j] => B[i, j] for i in 1:3, j in 1:3)
+    for i in 1:3
+        vals[Nv[i]] = 100.0
+        vals[Sv[i]] = 50.0
+    end
+    vals[γ] = 0.5
+    @test effective_reproduction_number(ngm_age, vals) ≈ maximum(abs, eigvals(B / 0.5)) / 2
+    # SEIRS with reinfection: R_t counts reinfections of R
+    @parameters βs σs κ γs μs ω Ns
+    @variables Ss(t) Es(t) Is(t) Rs(t)
+    λ = βs * Is / Ns
+    seirs = complete(System(
+        [D(Ss) ~ μs * Ns + ω * Rs - λ * Ss - μs * Ss,
+            D(Es) ~ λ * Ss + σs * λ * Rs - (κ + μs) * Es,
+            D(Is) ~ κ * Es - (γs + μs) * Is,
+            D(Rs) ~ γs * Is - σs * λ * Rs - ω * Rs - μs * Rs],
+        t;
+        name = :seirs))
+    Rt_s = effective_reproduction_number(seirs, [Es, Is])
+    @test symbolic_isequal(Rt_s, βs * κ * (Ss + σs * Rs) / (Ns * (κ + μs) * (γs + μs)))
+    # time-varying transmission: R₀ is refused, R_t is a function of t and S
+    @parameters β₀ ε γt Nt
+    @variables St(t) It(t) Rt_(t)
+    βt = β₀ * (1 + ε * cos(2π * t / 365))
+    seasonal = complete(System(
+        [D(St) ~ -βt * St * It / Nt, D(It) ~ βt * St * It / Nt - γt * It, D(Rt_) ~ γt * It],
+        t; name = :seasonal))
+    @test_throws ArgumentError next_generation_matrix(
+        seasonal, [It]; equilibrium = Dict(St => Nt))
+    Rseason = effective_reproduction_number(seasonal, [It])
+    @test symbolic_isequal(Rseason, βt * St / (γt * Nt))
+    ngm_season = next_generation_matrix(
+        seasonal, [It]; equilibrium = Dict(), autonomous = false)
+    probs = ODEProblem(seasonal,
+        [St => 990.0, It => 10.0, Rt_ => 0.0, β₀ => 0.3, ε => 0.5, γt => 0.2, Nt => 1000.0],
+        (0.0, 400.0))
+    sols = solve(probs, Tsit5(); saveat = 50.0)
+    Rtraj = effective_reproduction_number(ngm_season, sols)
+    expected = [0.3 * (1 + 0.5 * cos(2π * τ / 365)) * sols(τ; idxs = St) / (0.2 * 1000)
+                for τ in sols.t]
+    @test Rtraj ≈ expected
+    sys_s, Rvs = add_effective_reproduction_number(seasonal, [It])
+    probs2 = ODEProblem(sys_s,
+        [St => 990.0, It => 10.0, Rt_ => 0.0, β₀ => 0.3, ε => 0.5, γt => 0.2, Nt => 1000.0],
+        (0.0, 400.0))
+    sols2 = solve(probs2, Tsit5(); saveat = 50.0)
+    @test sols2[Rvs] ≈ expected
 end
 
 @testset "numeric construction from F and V (ForwardDiff)" begin
@@ -231,4 +314,40 @@ end
         ρ = spectral_radius([a b; c d])
         @test (ρ > 1) == (a + d > 2 || 1 - (a + d) + (a * d - b * c) < 0)
     end
+end
+
+@testset "symbolic inverse scales to a dozen compartments" begin
+    # inv(::Matrix{Num}) uses Laplace expansion and would never finish here
+    n = 6
+    @parameters q σ γ C[1:n, 1:n] N[1:n]
+    @variables S(t)[1:n] E(t)[1:n] I(t)[1:n]
+    Cm, Nv, Sv, Ev, Iv = collect(C), collect(N), collect(S), collect(E), collect(I)
+    λ = [q * sum(Cm[i, j] * Iv[j] / Nv[j] for j in 1:n) for i in 1:n]
+    eqs = vcat([D(Sv[i]) ~ -λ[i] * Sv[i] for i in 1:n],
+        [D(Ev[i]) ~ λ[i] * Sv[i] - σ * Ev[i] for i in 1:n],
+        [D(Iv[i]) ~ σ * Ev[i] - γ * Iv[i] for i in 1:n])
+    age = complete(System(eqs, t; name = :age12))
+    stats = @timed next_generation_matrix(
+        age, vcat(Ev, Iv); equilibrium = Dict(Sv[i] => Nv[i] for i in 1:n))
+    ngm = stats.value
+    @test stats.time < 120
+    @test size(ngm.K_L) == (12, 12) && size(ngm.K) == (6, 6)
+    @test symbolic_isequal(ngm.K[1, 2], q * Cm[1, 2] * Nv[1] / (Nv[2] * γ))
+    vals = Dict{Any, Any}(Cm[i, j] => 1.0 + i + j for i in 1:n, j in 1:n)
+    for i in 1:n
+        vals[Nv[i]] = 100.0 + i
+    end
+    vals[q] = 0.05
+    vals[σ] = 0.25
+    vals[γ] = 0.2
+    num = evaluate(ngm, vals)
+    @test num.K_L ≈ -num.T / num.Σ
+    @test mean_sojourn_times(num) ≈ -inv(num.Σ)
+    Sm = mean_sojourn_times(ngm)
+    @test symbolic_isequal(Sm[n + 1, 1], σ / (σ * γ))
+    # explicit inverse helper
+    @variables a b c d
+    Ainv = ReproductiveNumbers.symbolic_inverse(Num[a b; c d])
+    @test symbolic_isequal(Ainv[1, 1], d / (a * d - b * c))
+    @test symbolic_isequal(ReproductiveNumbers.symbolic_inverse(Num[a;;])[1, 1], 1 / a)
 end

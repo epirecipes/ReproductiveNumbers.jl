@@ -18,6 +18,11 @@ end
     @test isequal(tidy((a * b) / ((-c - d) * (-a - b))), (a * b) / ((c + d) * (a + b)))
     @test tidy(2) == 2
     @test isequal(tidy(a), a)
+    # cancelling sums collapse, distinct fractions keep their shape
+    @test isequal(tidy(a / b - a / b), 0)
+    @test isequal(tidy((a * b) / c + (-a * b) / c), 0)
+    @test isequal(tidy(a / b + c / d), a / b + c / d)
+    @test isequal(tidy(a / b + c / d - c / d), a / b)
     @test size(tidy([a -b; -c d])) == (2, 2)
 end
 

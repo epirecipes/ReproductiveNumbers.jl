@@ -55,7 +55,8 @@ R0 = basic_reproduction_number(ngm)
 This is equation (4.4) of van den Driessche & Watmough:
 
 ```{julia}
-paper = sum(βv[k] * prod(νv[j] for j in 1:(k - 1); init = 1) / prod(νv[j] + d for j in 1:k) for k in 1:4)
+paper = sum(βv[k] * prod(νv[j] for j in 1:(k - 1); init = 1) / prod(νv[j] + d for j in 1:k)
+for k in 1:4)
 symbolic_isequal(R0, paper)
 ```
 

@@ -6,6 +6,7 @@ using SafeTestsets, Test
     @safetestset "Unit: spectral radius" include("unit/test_spectral.jl")
     @safetestset "Unit: decomposition" include("unit/test_decomposition.jl")
     @safetestset "Unit: analysis" include("unit/test_analysis.jl")
+    @safetestset "Unit: routing" include("unit/test_routing.jl")
     @safetestset "Integration: ModelingToolkit models" include("integration/test_modelingtoolkit.jl")
     @safetestset "Integration: Catalyst models" include("integration/test_catalyst.jl")
     @safetestset "Integration: numeric evaluation" include("integration/test_numeric.jl")

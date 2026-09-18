@@ -26,7 +26,7 @@ function _maybe_number(x)
 end
 
 """
-    basic_reproduction_number(ngm::NextGenerationMatrix; kwargs...)
+    basic_reproduction_number(ngm::NextGenerationMatrix; method = :auto, kwargs...)
     basic_reproduction_number(ngm::NextGenerationMatrix, p)
     basic_reproduction_number(sys, infected, [p]; kwargs...)
 
@@ -34,25 +34,37 @@ The basic reproduction number `R₀`, the spectral radius of the next-generation
 (equivalently of `K_L`).
 
 With a symbolic `ngm` and no parameter values, a closed-form expression is returned when
-one exists (see [`spectral_radius`](@ref)); if `K` admits none, the small-domain matrix
-[`small_domain_matrix`](@ref) is tried, and otherwise a [`NoClosedFormError`](@ref) is
-thrown. With parameter values `p` (see [`evaluate`](@ref)) a `Float64` is returned.
+one exists. Two routes are available and `method` selects them: `:blocks` decomposes `K`
+into irreducible blocks (see [`spectral_radius`](@ref)); `:small_domain` uses the
+small-domain matrix [`small_domain_matrix`](@ref), which is smaller than `K` when `T` has
+low rank. `:auto` (the default) tries both, the small domain first when `K` is larger than
+`2 × 2` and `T` has low rank, and throws a [`NoClosedFormError`](@ref) if neither
+succeeds. Set `ENV["JULIA_DEBUG"] = "ReproductiveNumbers"` to see the route taken. With parameter values `p` (see [`evaluate`](@ref)) a `Float64` is returned.
 
 The three-argument form builds the next-generation matrix first; keyword arguments are
 passed to [`next_generation_matrix`](@ref).
 """
 function basic_reproduction_number(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}};
-        numeric_rank_check::Bool = true)
-    try
-        return spectral_radius(ngm.K; numeric_rank_check)
-    catch err
-        err isa NoClosedFormError || rethrow()
-        # K may be reducible to a smaller matrix with the same non-zero spectrum when T
-        # has low rank (Diekmann et al. 2010, section 3.3): try the small domain.
+        numeric_rank_check::Bool = true, method::Symbol = :auto)
+    blocks = () -> spectral_radius(ngm.K; numeric_rank_check)
+    small = () -> begin
         K_S = small_domain_matrix(ngm)
-        size(K_S, 1) < size(ngm.K, 1) || rethrow()
-        return spectral_radius(K_S; numeric_rank_check)
+        size(K_S, 1) < size(ngm.K, 1) ||
+            throw(NoClosedFormError("T has full rank, so the small-domain matrix is K itself"))
+        spectral_radius(K_S; numeric_rank_check)
     end
+    if method === :blocks
+        return blocks()
+    elseif method === :small_domain
+        return small()
+    elseif method === :auto
+        # try the smaller matrix first when K is large and T has low rank
+        ladder = size(ngm.K, 1) > 2 && _independent_rows(ngm.T) |> length < size(ngm.K, 1) ?
+                 [:small_domain => small, :blocks => blocks] :
+                 [:blocks => blocks, :small_domain => small]
+        return first_success(ladder; what = "closed-form R₀")
+    end
+    throw(ArgumentError("unknown method `$(repr(method))`; use :auto, :blocks or :small_domain"))
 end
 function basic_reproduction_number(ngm::NextGenerationMatrix{<:AbstractMatrix{<:Real}})
     spectral_radius(ngm.K)
@@ -124,7 +136,7 @@ function _type_matrix(K::AbstractMatrix{Num}, idx)
         P[i, i] = 1
     end
     Id = Matrix{Num}(I, n, n)
-    M = tidy(Num.(P) * K * inv(Id - Num.(I - P) * K))
+    M = tidy(Num.(P) * K * symbolic_inverse(Id - Num.(I - P) * K))
     return M[idx, idx]
 end
 function _type_matrix(K::AbstractMatrix{<:Real}, idx)

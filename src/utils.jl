@@ -125,17 +125,33 @@ end
 Cosmetic normalisation of a symbolic expression: cancel paired minus signs and, if
 `fractions` is `true`, simplify products and quotients as rational functions (cancelling
 common factors). Sums are handled term by term so that `a / b + c / d` keeps its shape. The
-result is mathematically identical to the input.
+rational-function simplification is skipped for entries larger than `TIDY_SIZE_LIMIT[]`
+nodes, where it can take minutes. The result is mathematically identical to the input.
 """
 function tidy(x::Num; fractions::Bool = true)
     y = _value(x)
     y isa Number && return Num(y)
     if SymbolicUtils.isadd(y)
-        return sum(tidy(Num(a); fractions) for a in arguments(y))
+        total = sum(tidy(Num(a); fractions) for a in arguments(y))
+        # terms may cancel exactly (`a/b - a/b` is not folded by Symbolics); accept the
+        # merged form only when it is a number or has fewer terms, so that genuinely
+        # different fractions keep their shape
+        if fractions && expression_size(total) <= TIDY_SIZE_LIMIT[]
+            merged = _value(Symbolics.simplify_fractions(total))
+            merged isa Number && return Num(merged)
+            expression_size(merged) < expression_size(total) &&
+                return Num(Postwalk(_negsum)(merged))
+        end
+        return total
     end
     z = Postwalk(_negsum)(y)
     if fractions
-        z = Postwalk(_negsum)(_unwrap(Symbolics.simplify_fractions(Num(z))))
+        size_ = expression_size(z)
+        if size_ <= TIDY_SIZE_LIMIT[]
+            z = Postwalk(_negsum)(_unwrap(Symbolics.simplify_fractions(Num(z))))
+        else
+            @debug "tidy: skipping simplify_fractions on an expression of $(size_) nodes (limit $(TIDY_SIZE_LIMIT[]))"
+        end
     end
     return Num(z)
 end

@@ -26,12 +26,14 @@ end
 
 function next_generation_matrix(rn::ReactionSystem, infected;
         equilibrium = nothing, transmission = :stoichiometry, warn::Bool = true,
+        autonomous::Bool = true,
         combinatoric_ratelaws = Catalyst.get_combinatoric_ratelaws(rn))
     sys = _ode_system(rn)
     # term-based strategies, and networks with coupled non-reaction equations, go
     # through the ODE route
     if transmission isa Symbol && transmission in TERM_STRATEGIES
-        return next_generation_matrix(sys, infected; equilibrium, transmission, warn)
+        return next_generation_matrix(
+            sys, infected; equilibrium, transmission, warn, autonomous)
     end
     if !isempty(nonreactions(rn))
         warn &&
@@ -40,7 +42,7 @@ function next_generation_matrix(rn::ReactionSystem, infected;
         return next_generation_matrix(
             sys, infected; equilibrium, transmission = :auto, warn)
     end
-    states, _ = ode_right_hand_sides(sys)
+    states, _ = ode_right_hand_sides(sys; autonomous)
     x = resolve_states(sys, states, infected)
     xi = [_findsym(v, states) for v in x]
     y = states[setdiff(eachindex(states), xi)]

@@ -31,11 +31,12 @@ using ModelingToolkit
 using ModelingToolkit: AbstractSystem, full_equations, equations, unknowns, parameters,
                        get_iv,
                        isdifferential, mtkcompile
-using SymbolicIndexingInterface: is_parameter, is_variable, getp, getu, symbolic_container
+using SymbolicIndexingInterface: is_parameter, is_variable, is_independent_variable, getp,
+                                 getu
 
 export NextGenerationMatrix, NoClosedFormError
 export next_generation_matrix, basic_reproduction_number, type_reproduction_number
-export effective_reproduction_number
+export effective_reproduction_number, add_effective_reproduction_number
 export disease_free_equilibrium, transmission_transition_matrices, infected_subsystem
 export suggest_infected, mean_sojourn_times
 export spectral_radius, characteristic_polynomial, irreducible_blocks, perron_vectors
@@ -45,6 +46,7 @@ export states_at_infection, infected_states, small_domain_matrix, evaluate,
 export symbolic_isequal, reaction_is_transmission
 
 include("utils.jl")
+include("routing.jl")
 include("types.jl")
 include("decomposition.jl")
 include("ngm.jl")

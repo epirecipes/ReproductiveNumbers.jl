@@ -29,11 +29,11 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 @variables S(t) E(t) I(t) Z(t) P(t) R(t)
 horizontal = S * (β₁ * I + β₂ * P) / N
 eqs = [D(S) ~ μ * N - horizontal - μ * S,
-       D(E) ~ horizontal - (ν + μ) * E,
-       D(I) ~ ν * E - (γ + μ) * I,
-       D(Z) ~ p₁ * γ * I - (α + μ) * Z,
-       D(P) ~ p₂ * α * Z + (μ - a) * P - (μ + b) * P,
-       D(R) ~ (1 - p₁) * γ * I + α * Z - μ * R]
+    D(E) ~ horizontal - (ν + μ) * E,
+    D(I) ~ ν * E - (γ + μ) * I,
+    D(Z) ~ p₁ * γ * I - (α + μ) * Z,
+    D(P) ~ p₂ * α * Z + (μ - a) * P - (μ + b) * P,
+    D(R) ~ (1 - p₁) * γ * I + α * Z - μ * R]
 bvd = complete(System(eqs, t; name = :bvd))
 ```
 
@@ -44,7 +44,7 @@ transmission: the foetus is counted when it is born.
 
 ```{julia}
 ngm = next_generation_matrix(bvd, [E, I, Z, P];
-                             transmission = [horizontal, 0, 0, p₂ * α * Z + (μ - a) * P])
+    transmission = [horizontal, 0, 0, p₂ * α * Z + (μ - a) * P])
 ```
 
 ## The next-generation matrix
@@ -67,7 +67,7 @@ R0 = basic_reproduction_number(ngm)
 
 ```{julia}
 vals = Dict(β₁ => 0.5, β₂ => 5.0, ν => 0.2, γ => 0.1, μ => 0.003, p₁ => 0.3, p₂ => 0.5,
-            α => 0.01, a => 0.001, b => 0.01, N => 1000.0)
+    α => 0.01, a => 0.001, b => 0.01, N => 1000.0)
 num = evaluate(ngm, vals)
 (basic_reproduction_number(num), num.K)
 ```
@@ -79,7 +79,25 @@ persistently infected animals at birth eliminates the infection only if `T_P` ex
 and `K[1,1]` is below one:
 
 ```{julia}
-(type_reproduction_number(num, E), type_reproduction_number(num, P), num.K[1, 1])
+T_E = type_reproduction_number(num, E)
+T_P = try
+    type_reproduction_number(num, P)
+catch err
+    err
+end
+(T_E, T_P, num.K[1, 1])
+```
+
+With these parameters horizontal transmission alone has `K[1, 1] > 1`, so the infection
+persists without any persistently infected animals and `T_P` is undefined: no control
+targeted only at persistently infected animals can eliminate it. Reducing horizontal
+transmission below its own threshold changes that:
+
+```{julia}
+vals2 = merge(vals, Dict(β₁ => 0.08))
+num2 = evaluate(ngm, vals2)
+(basic_reproduction_number(num2), num2.K[1, 1],
+    type_reproduction_number(num2, P), 1 - 1 / type_reproduction_number(num2, P))
 ```
 
 ```{julia}

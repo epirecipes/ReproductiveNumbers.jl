@@ -25,9 +25,9 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 @variables S(t) E(t) I(t) R(t)
 λ = β * I / N
 eqs = [D(S) ~ μ * N + ω * R - λ * S - μ * S,
-       D(E) ~ λ * S + σ * λ * R - (κ + μ) * E,
-       D(I) ~ κ * E - (γ + μ) * I,
-       D(R) ~ γ * I - σ * λ * R - ω * R - μ * R]
+    D(E) ~ λ * S + σ * λ * R - (κ + μ) * E,
+    D(I) ~ κ * E - (γ + μ) * I,
+    D(R) ~ γ * I - σ * λ * R - ω * R - μ * R]
 seirs = complete(System(eqs, t; name = :seirs))
 ngm = next_generation_matrix(seirs, [E, I])
 transmission_method(ngm).F
@@ -52,7 +52,7 @@ rows = map((0.05, 0.1, 0.15, 0.2, 0.4)) do βval
     p = merge(base, Dict(β => βval))
     u0 = [S => 999.0, E => 0.0, I => 1.0, R => 0.0]
     ss = solve(SteadyStateProblem(ODEProblem(seirs, [u0; collect(p)], (0.0, 1.0))),
-               DynamicSS(Tsit5()); abstol = 1e-10, reltol = 1e-10)
+        DynamicSS(Tsit5()); abstol = 1e-10, reltol = 1e-10)
     (β = βval, R0 = basic_reproduction_number(ngm, p), I_star = ss[I], S_star = ss[S])
 end
 rows
@@ -73,7 +73,9 @@ this with `NonlinearSolve` on the last row of the sweep:
 
 ```{julia}
 p = merge(base, Dict(β => 0.4))
-nl = solve(NonlinearProblem(seirs, [[S => 300.0, E => 20.0, I => 30.0, R => 650.0]; collect(p)]), NewtonRaphson())
+nl = solve(
+    NonlinearProblem(seirs, [[S => 300.0, E => 20.0, I => 30.0, R => 650.0]; collect(p)]),
+    NewtonRaphson())
 state = Dict(S => nl[S], R => nl[R])
 ReproductiveNumbers.to_number(substitute(R_state, merge(p, state)))
 ```

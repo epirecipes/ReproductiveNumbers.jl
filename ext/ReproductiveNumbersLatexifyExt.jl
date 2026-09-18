@@ -25,8 +25,10 @@ function Latexify.latexify(ngm::NextGenerationMatrix; kwargs...)
         err isa NoClosedFormError ? nothing : rethrow()
     end
     R0 === nothing || push!(parts, "R_0 = " * Latexify.latexraw(R0; kwargs...))
-    body = join(parts, " \\\\\n")
-    return Latexify.LaTeXString("\\begin{align*}\n" * body * "\n\\end{align*}")
+    # a single line: renderers that treat the string as Markdown (Documenter) would
+    # otherwise read lines beginning with `-` as list items
+    body = replace(join(parts, " \\\\ "), "\n" => " ")
+    return Latexify.LaTeXString("\\begin{align*} " * body * " \\end{align*}")
 end
 
 function Base.show(io::IO, ::MIME"text/latex", ngm::NextGenerationMatrix)

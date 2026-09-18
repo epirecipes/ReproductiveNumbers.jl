@@ -30,13 +30,13 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 λ₁ = β₁ * (I₁ + J₁) / N
 λ₂ = β₂ * (I₂ + J₂) / N
 eqs = [D(S) ~ μ * N - (λ₁ + λ₂) * S - μ * S,
-       D(I₁) ~ λ₁ * S - (γ₁ + μ) * I₁,
-       D(I₂) ~ λ₂ * S - (γ₂ + μ) * I₂,
-       D(R₁) ~ γ₁ * I₁ - σ₂₁ * λ₂ * R₁ - μ * R₁,
-       D(R₂) ~ γ₂ * I₂ - σ₁₂ * λ₁ * R₂ - μ * R₂,
-       D(J₁) ~ σ₁₂ * λ₁ * R₂ - (γ₁ + μ) * J₁,
-       D(J₂) ~ σ₂₁ * λ₂ * R₁ - (γ₂ + μ) * J₂,
-       D(R) ~ γ₁ * J₁ + γ₂ * J₂ - μ * R]
+    D(I₁) ~ λ₁ * S - (γ₁ + μ) * I₁,
+    D(I₂) ~ λ₂ * S - (γ₂ + μ) * I₂,
+    D(R₁) ~ γ₁ * I₁ - σ₂₁ * λ₂ * R₁ - μ * R₁,
+    D(R₂) ~ γ₂ * I₂ - σ₁₂ * λ₁ * R₂ - μ * R₂,
+    D(J₁) ~ σ₁₂ * λ₁ * R₂ - (γ₁ + μ) * J₁,
+    D(J₂) ~ σ₂₁ * λ₂ * R₁ - (γ₂ + μ) * J₂,
+    D(R) ~ γ₁ * J₁ + γ₂ * J₂ - μ * R]
 two = complete(System(eqs, t; name = :two_strain))
 suggest_infected(two)
 ```
@@ -79,9 +79,9 @@ with strain 1 can produce strain-2 infections, and the blocks merge into one irr
 ```{julia}
 @parameters m
 eqs_m = [D(S) ~ μ * N - (β₁ * I₁ + β₂ * I₂) * S / N - μ * S,
-         D(I₁) ~ β₁ * I₁ * S / N - (γ₁ + μ + m) * I₁,
-         D(I₂) ~ β₂ * I₂ * S / N + m * I₁ - (γ₂ + μ) * I₂,
-         D(R) ~ γ₁ * I₁ + γ₂ * I₂ - μ * R]
+    D(I₁) ~ β₁ * I₁ * S / N - (γ₁ + μ + m) * I₁,
+    D(I₂) ~ β₂ * I₂ * S / N + m * I₁ - (γ₂ + μ) * I₂,
+    D(R) ~ γ₁ * I₁ + γ₂ * I₂ - μ * R]
 mut = complete(System(eqs_m, t; name = :mutation))
 ngm_m = next_generation_matrix(mut, [I₁, I₂])
 ngm_m.K
@@ -104,10 +104,10 @@ infection-free state:
 @parameters κ
 @variables C(t)
 eqs_c = [D(S) ~ -(β₁ * I₁ + β₂ * I₂) * S / N,
-         D(I₁) ~ β₁ * I₁ * S / N - γ₁ * I₁ - κ * I₁ * I₂,
-         D(I₂) ~ β₂ * I₂ * S / N - γ₂ * I₂ - κ * I₁ * I₂,
-         D(C) ~ 2κ * I₁ * I₂ - (γ₁ + γ₂) * C,
-         D(R) ~ γ₁ * I₁ + γ₂ * I₂ + (γ₁ + γ₂) * C]
+    D(I₁) ~ β₁ * I₁ * S / N - γ₁ * I₁ - κ * I₁ * I₂,
+    D(I₂) ~ β₂ * I₂ * S / N - γ₂ * I₂ - κ * I₁ * I₂,
+    D(C) ~ 2κ * I₁ * I₂ - (γ₁ + γ₂) * C,
+    D(R) ~ γ₁ * I₁ + γ₂ * I₂ + (γ₁ + γ₂) * C]
 co = complete(System(eqs_c, t; name = :coinfection))
 ngm_c = next_generation_matrix(co, [I₁, I₂, C]; equilibrium = Dict(S => N, R => 0))
 states_at_infection(ngm_c), basic_reproduction_number(ngm_c)

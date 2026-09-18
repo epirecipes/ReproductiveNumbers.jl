@@ -57,7 +57,8 @@ basic_reproduction_number(ngm)
 Counting only the infection of cells as reproduction, virion production is a transition:
 
 ```{julia}
-ngm_cells = next_generation_matrix(vd, [I, V]; transmission = rx -> any(isequal(I), rx.products) && any(isequal(T), rx.substrates))
+ngm_cells = next_generation_matrix(vd, [I, V];
+    transmission = rx -> any(isequal(I), rx.products) && any(isequal(T), rx.substrates))
 states_at_infection(ngm_cells), basic_reproduction_number(ngm_cells)
 ```
 

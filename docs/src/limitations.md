@@ -8,15 +8,15 @@ and what to do instead.
 The default term classification (`:auto`) treats a term as a transmission if it involves an
 uninfected state or is non-linear in the infected states. Two kinds of model defeat it:
 
-- **Vertical transmission written as an ODE term** (`p μ I` feeding infected juveniles) is
-  linear in the infected states and involves no susceptible class, so it is filed under
-  transitions. Write the model as a reaction network (the stoichiometry rule recognises
-  `I --> I + J`), or give the transmission terms explicitly.
-- **Loss terms that involve uninfected states**, such as density-dependent death
-  `-d (S + I) I` or predation on infecteds, are classified as transmissions and would give
-  a negative entry of `T`. The package warns (`warn = true`) when a transmission term or
-  an entry of `T` is manifestly negative; reassign such terms with an explicit
-  `transmission` vector or a predicate.
+  - **Vertical transmission written as an ODE term** (`p μ I` feeding infected juveniles) is
+    linear in the infected states and involves no susceptible class, so it is filed under
+    transitions. Write the model as a reaction network (the stoichiometry rule recognises
+    `I --> I + J`), or give the transmission terms explicitly.
+  - **Loss terms that involve uninfected states**, such as density-dependent death
+    `-d (S + I) I` or predation on infecteds, are classified as transmissions and would give
+    a negative entry of `T`. The package warns (`warn = true`) when a transmission term or
+    an entry of `T` is manifestly negative; reassign such terms with an explicit
+    `transmission` vector or a predicate.
 
 Whatever strategy is used is recorded in the result and printed with it
 ([`transmission_method`](@ref)). For numeric values, [`validate_decomposition`](@ref)
@@ -31,6 +31,15 @@ among polynomial solutions it accepts exactly one candidate in which no uninfect
 vanishes and otherwise lists the candidates. Steady states that are not unique (an SIR
 model without demography, for which every `S` is a steady state) or not polynomial must
 be supplied with the `equilibrium` keyword.
+
+## Large models
+
+Symbolic inverses use LU factorisation above four compartments (see
+[How the symbolic algorithms are routed](@ref)), so models with a few dozen compartments are
+fine symbolically; entries of the resulting matrices are then large rational functions and
+rational-function simplification is skipped above a size limit, which only affects how the
+expressions look. `suggest_infected` enumerates subsets and is limited to fourteen unknowns
+by default.
 
 ## Closed forms
 
@@ -53,14 +62,14 @@ then reported as having no closed form).
 
 ## Models the package does not handle
 
-- Non-autonomous systems (explicit dependence on time) are rejected; seasonally forced
-  models need a different definition of `R₀` (Bacaër and Guernaoui 2006).
-- Delay, stochastic, spatial and discrete-time models are out of scope.
-- Reaction networks with coupled non-reaction equations, constant or boundary species, or
-  hybrid noise/jump components fall back to the ODE route (with a warning) or fail to
-  convert; ModelingToolkit parameter dependencies are not resolved before linearisation.
-- Composed ModelingToolkit systems with several unknowns of the same name must be referred
-  to by their symbolic variables, not by `Symbol`.
+  - Non-autonomous systems (explicit dependence on time) are rejected; seasonally forced
+    models need a different definition of `R₀` (Bacaër and Guernaoui 2006).
+  - Delay, stochastic, spatial and discrete-time models are out of scope.
+  - Reaction networks with coupled non-reaction equations, constant or boundary species, or
+    hybrid noise/jump components fall back to the ODE route (with a warning) or fail to
+    convert; ModelingToolkit parameter dependencies are not resolved before linearisation.
+  - Composed ModelingToolkit systems with several unknowns of the same name must be referred
+    to by their symbolic variables, not by `Symbol`.
 
 ## Numerical caveats
 

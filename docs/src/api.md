@@ -29,6 +29,7 @@ suggest_infected
 ```@docs
 basic_reproduction_number
 effective_reproduction_number
+add_effective_reproduction_number
 type_reproduction_number
 NoClosedFormError
 ```
@@ -64,6 +65,16 @@ spectral_radius_2x2
 irreducible_blocks
 isrankone
 characteristic_polynomial
+```
+
+## Routing
+
+```@docs
+symbolic_inverse
+first_success
+expression_size
+TIDY_SIZE_LIMIT
+LAPLACE_INVERSE_LIMIT
 ```
 
 ## Symbolic helpers

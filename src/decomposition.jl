@@ -12,9 +12,10 @@ $(TYPEDSIGNATURES)
 
 Return the ordinary differential equations of `sys` as a pair `(states, rhs)` with the
 right-hand sides expressed purely in terms of the unknowns and parameters. Systems with
-algebraic (observed) equations are compiled with `mtkcompile` first.
+algebraic (observed) equations are compiled with `mtkcompile` first. Explicit dependence on
+the independent variable is an error unless `autonomous = false`.
 """
-function ode_right_hand_sides(sys::AbstractSystem)
+function ode_right_hand_sides(sys::AbstractSystem; autonomous::Bool = true)
     eqs = _equations(sys)
     states = Num.(unknowns(sys))
     if !all(eq -> isdifferential(_unwrap(eq.lhs)), eqs)
@@ -44,9 +45,10 @@ function ode_right_hand_sides(sys::AbstractSystem)
         throw(ArgumentError("some unknowns of `$(nameof(sys))` have no differential equation"))
     iv = Num(get_iv(sys))
     for r in rhs
-        depends_on(r, [iv]) &&
+        autonomous && depends_on(r, [iv]) &&
             throw(ArgumentError("the right-hand side `$(r)` depends explicitly on the independent variable; " *
-                                "next-generation matrices require an autonomous system"))
+                                "the basic reproduction number requires an autonomous system " *
+                                "(the effective reproduction number does not)"))
     end
     return states, rhs
 end
@@ -94,8 +96,8 @@ Split the unknowns and right-hand sides of `sys` into the infected subsystem and
 uninfected subsystem. Returns a named tuple
 `(infected, uninfected, f_infected, f_uninfected)`.
 """
-function infected_subsystem(sys::AbstractSystem, infected)
-    states, rhs = ode_right_hand_sides(sys)
+function infected_subsystem(sys::AbstractSystem, infected; autonomous::Bool = true)
+    states, rhs = ode_right_hand_sides(sys; autonomous)
     x = resolve_states(sys, states, infected)
     xi = [_findsym(v, states) for v in x]
     yi = setdiff(eachindex(states), xi)

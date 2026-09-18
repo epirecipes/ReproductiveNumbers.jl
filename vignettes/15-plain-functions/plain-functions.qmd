@@ -55,17 +55,24 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 @variables S(t) Sᵥ(t) E(t) I(t) R(t)
 λ = β * I / N
 # all-or-nothing: the protected fraction never enters the model's susceptible pool
-aon = complete(System([D(S) ~ -λ * S, D(E) ~ λ * S - σ * E, D(I) ~ σ * E - γ * I, D(R) ~ γ * I], t; name = :aon))
-ngm_aon = next_generation_matrix(aon, [E, I]; equilibrium = Dict(S => (1 - ε * v) * N, R => 0))
+aon = complete(System(
+    [D(S) ~ -λ * S, D(E) ~ λ * S - σ * E, D(I) ~ σ * E - γ * I, D(R) ~ γ * I],
+    t; name = :aon))
+ngm_aon = next_generation_matrix(
+    aon, [E, I]; equilibrium = Dict(S => (1 - ε * v) * N, R => 0))
 R_aon = basic_reproduction_number(ngm_aon)
 ```
 
 ```{julia}
 # leaky: vaccinated susceptibles Sᵥ are infected at rate (1 - ε) λ
-leaky = complete(System([D(S) ~ -λ * S, D(Sᵥ) ~ -(1 - ε) * λ * Sᵥ,
-                         D(E) ~ λ * S + (1 - ε) * λ * Sᵥ - σ * E,
-                         D(I) ~ σ * E - γ * I, D(R) ~ γ * I], t; name = :leaky))
-ngm_leaky = next_generation_matrix(leaky, [E, I]; equilibrium = Dict(S => (1 - v) * N, Sᵥ => v * N, R => 0))
+leaky = complete(System(
+    [D(S) ~ -λ * S, D(Sᵥ) ~ -(1 - ε) * λ * Sᵥ,
+        D(E) ~ λ * S + (1 - ε) * λ * Sᵥ - σ * E,
+        D(I) ~ σ * E - γ * I, D(R) ~ γ * I],
+    t;
+    name = :leaky))
+ngm_leaky = next_generation_matrix(
+    leaky, [E, I]; equilibrium = Dict(S => (1 - v) * N, Sᵥ => v * N, R => 0))
 R_leaky = basic_reproduction_number(ngm_leaky)
 ```
 

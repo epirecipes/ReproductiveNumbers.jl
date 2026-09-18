@@ -94,10 +94,11 @@ of `T` is manifestly negative:
 
 ```@example transmissions
 @parameters d
-dd = complete(System([D(S) ~ -β * S * I / N,
-                      D(I) ~ β * S * I / N - γ * I - d * (S + I) * I], t; name = :dd))
+dd = complete(System(
+    [D(S) ~ -β * S * I / N,
+        D(I) ~ β * S * I / N - γ * I - d * (S + I) * I], t; name = :dd))
 ngm_dd = next_generation_matrix(dd, [I]; equilibrium = Dict(S => N),
-                                transmission = [β * S * I / N])
+    transmission = [β * S * I / N])
 basic_reproduction_number(ngm_dd)
 ```
 

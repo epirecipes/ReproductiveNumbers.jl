@@ -104,7 +104,9 @@ Elasticities `(θ / R₀) ∂R₀/∂θ`, the proportional change in `R₀` per 
 each parameter, as a `Dict`. See [`sensitivities`](@ref).
 """
 function elasticities(R0::Num, params = symbolic_variables(R0))
-    return Dict{Num, Num}(θ => tidy(θ / R0 * Symbolics.derivative(R0, θ))
+    # no rational-function simplification: R₀ may contain square roots, for which it
+    # is extremely slow
+    return Dict{Num, Num}(θ => tidy(θ / R0 * Symbolics.derivative(R0, θ); fractions = false)
     for θ in params)
 end
 function elasticities(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}};
@@ -171,18 +173,66 @@ function perron_vectors(K::AbstractMatrix{Num})
 end
 
 """
+    effective_reproduction_number(sys, infected; equilibrium = Dict(), kwargs...)
+    effective_reproduction_number(ngm)
+    effective_reproduction_number(ngm, state)
     effective_reproduction_number(ngm, sol, t)
     effective_reproduction_number(ngm, sol, ts::AbstractVector)
+    effective_reproduction_number(ngm, sol)
 
-The reproduction number at the state of the ODE solution `sol` at time `t` (or a vector of
-times): the symbolic `ngm` must have been built with the uninfected states left symbolic,
-`next_generation_matrix(sys, infected; equilibrium = Dict())`, or with only some of them
-fixed. Parameters are read from the solution, the unknowns from `sol(t)`. Note that this
-"reproduction number at a state" is the spectral radius of the next-generation matrix
-linearised at that state (for the SIR model `R₀ S(t)/N`); it is not defined through the
-infection-free steady state and is meaningful as a threshold for growth of the linearised
-infected subsystem at that instant.
+The effective reproduction number `R_t`: the expected number of new infections caused by an
+infectious individual in a population in which some individuals are no longer susceptible.
+It is computed exactly like `R₀`, as the spectral radius of the next-generation matrix, but
+linearised at the *current* state instead of the infection-free steady state, so it is a
+function of the uninfected states (for the SIR model `R_t = R₀ S(t)/N`).
+
+  - `effective_reproduction_number(sys, infected)` builds the next-generation matrix with
+    the uninfected states left symbolic (`equilibrium = Dict()`; give some of them to fix
+    them) and returns `R_t` as a closed-form expression in those states when one exists
+    (otherwise a [`NoClosedFormError`](@ref) is thrown). Rates that depend explicitly on
+    time are allowed (`autonomous = false` by default here), so a seasonally forced `β(t)`
+    gives `R_t = β(t) S(t)/(γ N)`. Other keyword arguments are those of
+    [`next_generation_matrix`](@ref).
+  - With a symbolic `ngm` built that way, `effective_reproduction_number(ngm)` is the same
+    expression, and `effective_reproduction_number(ngm, state)` evaluates it at a state
+    given as a `Dict` or pairs mapping (some of) the states and parameters to values or
+    expressions; the result is a `Float64` when everything is numeric and an expression
+    otherwise.
+  - With an ODE solution `sol` (of the same system), `effective_reproduction_number(ngm, sol, t)`
+    evaluates it at time `t`, reading the parameters from the solution and the state from
+    `sol(t)`; a vector of times gives the trajectory, and `sol` alone uses `sol.t`. No closed
+    form is needed here: the numeric spectral radius is used.
+
+To obtain `R_t` directly from the solver, as a variable that can be indexed and plotted,
+see [`add_effective_reproduction_number`](@ref).
+
+!!! note "Which R_t?"
+
+    This is the *instantaneous* reproduction number of the compartmental model, the
+    threshold quantity for growth of the linearised infected subsystem at the current state
+    (what `R₀ S(t)/N` denotes in textbooks). It is not the *case* reproduction number
+    estimated from incidence data through a renewal equation, which averages over the
+    infectious period of the cases infected at time `t`.
 """
+function effective_reproduction_number(sys::AbstractSystem, infected;
+        equilibrium = Dict{Num, Any}(), autonomous::Bool = false, kwargs...)
+    ngm = next_generation_matrix(sys, infected; equilibrium, autonomous, kwargs...)
+    return basic_reproduction_number(ngm)
+end
+function effective_reproduction_number(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}};
+        kwargs...)
+    return basic_reproduction_number(ngm; kwargs...)
+end
+function effective_reproduction_number(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}},
+        state::Union{AbstractDict, AbstractVector{<:Pair}, Tuple{Vararg{Pair}}})
+    d = substitution_map(state)
+    syms = symbolic_variables([ngm.T; ngm.Σ])
+    if Base.all(s -> haskey(d, s), syms)
+        return basic_reproduction_number(ngm, d)
+    end
+    R = basic_reproduction_number(ngm)
+    return tidy(substitute(R, d); fractions = false)
+end
 function effective_reproduction_number(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}},
         sol::AbstractTimeseriesSolution, t::Real)
     syms = symbolic_variables([ngm.T; ngm.Σ])
@@ -192,6 +242,8 @@ function effective_reproduction_number(ngm::NextGenerationMatrix{<:AbstractMatri
             d[s] = getp(sol, s)(sol)
         elseif is_variable(sol, s)
             d[s] = sol(t; idxs = s)
+        elseif is_independent_variable(sol, s)
+            d[s] = t   # time-varying rates
         end
     end
     return basic_reproduction_number(ngm, d)
@@ -203,4 +255,27 @@ end
 function effective_reproduction_number(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}},
         sol::AbstractTimeseriesSolution)
     return effective_reproduction_number(ngm, sol, sol.t)
+end
+
+"""
+    add_effective_reproduction_number(sys, infected; name = :Rt, kwargs...)
+
+Return `(sys′, Rt)`: a compiled copy of the ModelingToolkit system `sys` with an observed
+variable `Rt(t)` equal to the closed-form effective reproduction number
+([`effective_reproduction_number`](@ref)) as a function of the state, and the variable
+itself. Solutions of `sys′` then give the trajectory directly, `sol[Rt]`, and it can be
+plotted with `idxs = Rt`. The system is rebuilt from `equations(sys)` with its initial
+conditions and compiled with `mtkcompile`, so an uncompiled system may be given; rates
+that depend explicitly on time are allowed. Keyword arguments are
+those of [`next_generation_matrix`](@ref); the closed form must exist.
+"""
+function add_effective_reproduction_number(sys::AbstractSystem, infected;
+        name::Symbol = :Rt, kwargs...)
+    R = effective_reproduction_number(sys, infected; kwargs...)
+    iv = get_iv(sys)
+    Rt = only(@variables $(name)(iv))
+    eqs = [collect(equations(sys)); Rt ~ R]
+    newsys = System(eqs, iv; name = nameof(sys),
+        initial_conditions = ModelingToolkit.initial_conditions(sys))
+    return mtkcompile(newsys), Rt
 end

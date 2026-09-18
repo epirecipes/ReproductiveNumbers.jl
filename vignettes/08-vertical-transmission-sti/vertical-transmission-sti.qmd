@@ -27,11 +27,11 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
 @parameters p μ ν₁ ν₂ γ₁ γ₂ β₁ β₂ N₁ N₂
 @variables S₁(t) J₁(t) I₁(t) S₂(t) J₂(t) I₂(t)
 eqs = [D(S₁) ~ μ * N₁ - p * μ * I₁ - β₁ * S₁ * I₂ / N₂ - μ * S₁,
-       D(J₁) ~ p * μ * I₁ - (ν₁ + μ) * J₁,
-       D(I₁) ~ ν₁ * J₁ + β₁ * S₁ * I₂ / N₂ - (γ₁ + μ) * I₁,
-       D(S₂) ~ μ * N₂ - p * μ * I₂ - β₂ * S₂ * I₁ / N₁ - μ * S₂,
-       D(J₂) ~ p * μ * I₂ - (ν₂ + μ) * J₂,
-       D(I₂) ~ ν₂ * J₂ + β₂ * S₂ * I₁ / N₁ - (γ₂ + μ) * I₂]
+    D(J₁) ~ p * μ * I₁ - (ν₁ + μ) * J₁,
+    D(I₁) ~ ν₁ * J₁ + β₁ * S₁ * I₂ / N₂ - (γ₁ + μ) * I₁,
+    D(S₂) ~ μ * N₂ - p * μ * I₂ - β₂ * S₂ * I₁ / N₁ - μ * S₂,
+    D(J₂) ~ p * μ * I₂ - (ν₂ + μ) * J₂,
+    D(I₂) ~ ν₂ * J₂ + β₂ * S₂ * I₁ / N₁ - (γ₂ + μ) * I₂]
 sti = complete(System(eqs, t; name = :sti_vertical))
 ```
 
@@ -41,8 +41,8 @@ new-infection rates explicitly:
 
 ```{julia}
 ngm = next_generation_matrix(sti, [J₁, I₁, J₂, I₂];
-                             transmission = [p * μ * I₁, β₁ * S₁ * I₂ / N₂,
-                                             p * μ * I₂, β₂ * S₂ * I₁ / N₁])
+    transmission = [p * μ * I₁, β₁ * S₁ * I₂ / N₂,
+        p * μ * I₂, β₂ * S₂ * I₁ / N₁])
 ```
 
 ## K is singular
@@ -82,7 +82,7 @@ R0 = basic_reproduction_number(ngm)
 
 ```{julia}
 vals = Dict(p => 0.3, μ => 0.02, ν₁ => 0.1, ν₂ => 0.1, γ₁ => 0.2, γ₂ => 0.25,
-            β₁ => 0.4, β₂ => 0.5, N₁ => 1000.0, N₂ => 1000.0)
+    β₁ => 0.4, β₂ => 0.5, N₁ => 1000.0, N₂ => 1000.0)
 num = evaluate(ngm, vals)
 (basic_reproduction_number(num), ReproductiveNumbers.to_number(substitute(R0, vals)))
 ```

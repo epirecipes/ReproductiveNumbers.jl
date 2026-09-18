@@ -1,0 +1,126 @@
+---
+title: "16. The effective reproduction number R_t over time"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+`R₀` describes the infection-free population. Once an epidemic is under way, the expected
+number of new infections caused by an infectious individual falls as susceptibles are used
+up and, in models with reinfection, changes as recovered individuals accumulate. The
+*effective reproduction number* `R_t` is the next-generation construction linearised at
+the current state rather than at the infection-free steady state. Because the state enters
+`T` only through the uninfected compartments, `R_t` has a closed form whenever `R₀` does,
+and it can be evaluated at any state, along a solution, or returned by the solver as an
+observed variable.
+
+Two other quantities are also called `R_t` in the literature: the *case* reproduction number
+estimated from incidence data through a renewal equation, which averages over the
+infectious period, and growth-rate based estimates. What the package computes is the
+instantaneous reproduction number of the mechanistic model, the threshold for growth of
+the linearised infected subsystem at each instant.
+
+## SIR: `R_t = R₀ S(t)/N`
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics, OrdinaryDiffEqTsit5, Plots
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters β γ N
+@variables S(t) I(t) R(t)
+sir = complete(System(
+    [D(S) ~ -β * S * I / N, D(I) ~ β * S * I / N - γ * I, D(R) ~ γ * I], t; name = :sir))
+Rt = effective_reproduction_number(sir, [I])
+```
+
+The same expression is obtained from a next-generation matrix built with the uninfected
+states left symbolic (`equilibrium = Dict()`), which also lets us evaluate it at any state:
+
+```{julia}
+ngm = next_generation_matrix(sir, [I]; equilibrium = Dict())
+(effective_reproduction_number(ngm, Dict(S => N / 2)),
+    effective_reproduction_number(ngm, [S => 500.0, β => 0.5, γ => 0.25, N => 1000.0]))
+```
+
+## A trajectory from the solver
+
+`add_effective_reproduction_number` returns a copy of the system with `Rt(t)` as an
+observed variable, so the solver computes it along with the state:
+
+```{julia}
+sir_Rt, Rtvar = add_effective_reproduction_number(sir, [I])
+prob = ODEProblem(
+    sir_Rt, [S => 999.0, I => 1.0, R => 0.0, β => 0.5, γ => 0.25, N => 1000.0], (0.0, 60.0))
+sol = solve(prob, Tsit5(); saveat = 1.0)
+plot(sol; idxs = [Rtvar], label = "R_t", xlabel = "time", ylabel = "R_t")
+hline!([1.0]; label = "threshold", linestyle = :dash)
+```
+
+The peak of the epidemic is where `R_t` crosses one:
+
+```{julia}
+tpeak = sol.t[argmax(sol[I])]
+(tpeak, sol(tpeak; idxs = Rtvar))
+```
+
+Evaluating along an existing solution gives the same numbers without rebuilding the system
+(useful when there is no closed form, since the numeric spectral radius is used):
+
+```{julia}
+maximum(abs, effective_reproduction_number(ngm, sol) .- sol[Rtvar])
+```
+
+## Reinfection: `R_t` depends on more than `S`
+
+In an SEIRS model in which recovered individuals are reinfected with reduced
+susceptibility `σ`, the effective reproduction number counts both routes:
+
+```{julia}
+@parameters βs σ κ γs μ ω Ns
+@variables Ss(t) E(t) Is(t) Rs(t)
+λ = βs * Is / Ns
+seirs = complete(System(
+    [D(Ss) ~ μ * Ns + ω * Rs - λ * Ss - μ * Ss,
+        D(E) ~ λ * Ss + σ * λ * Rs - (κ + μ) * E,
+        D(Is) ~ κ * E - (γs + μ) * Is,
+        D(Rs) ~ γs * Is - σ * λ * Rs - ω * Rs - μ * Rs],
+    t;
+    name = :seirs))
+effective_reproduction_number(seirs, [E, Is])
+```
+
+The endemic equilibrium is where `R_t = 1`; approaching it, `R_t` oscillates around one:
+
+```{julia}
+seirs_Rt, Rtvar2 = add_effective_reproduction_number(seirs, [E, Is])
+p = [βs => 0.4, σ => 0.5, κ => 0.2, γs => 0.1, μ => 0.01, ω => 0.02, Ns => 1000.0]
+prob2 = ODEProblem(
+    seirs_Rt, [[Ss => 999.0, E => 0.0, Is => 1.0, Rs => 0.0]; p], (0.0, 600.0))
+sol2 = solve(prob2, Tsit5(); saveat = 2.0)
+plot(sol2; idxs = [Rtvar2], label = "R_t (SEIRS)", xlabel = "time")
+hline!([1.0]; label = "threshold", linestyle = :dash)
+```
+
+```{julia}
+sol2[Rtvar2][end]
+```
+
+## Vector-borne infection: two susceptible pools
+
+For the Ross–Macdonald model of vignette 4 the effective reproduction number involves both
+the susceptible humans and the susceptible mosquitoes:
+
+```{julia}
+@parameters a b c γₕ μᵥ N_H N_V
+@variables S_H(t) I_H(t) S_V(t) I_V(t)
+malaria = complete(System(
+    [D(S_H) ~ -a * b * S_H * I_V / N_H + γₕ * I_H,
+        D(I_H) ~ a * b * S_H * I_V / N_H - γₕ * I_H,
+        D(S_V) ~ μᵥ * N_V - a * c * S_V * I_H / N_H - μᵥ * S_V,
+        D(I_V) ~ a * c * S_V * I_H / N_H - μᵥ * I_V],
+    t;
+    name = :malaria))
+effective_reproduction_number(malaria, [I_H, I_V])
+```

@@ -30,13 +30,14 @@ _structural_zero(x::Number) = iszero(x)
 
 function _large_domain(T::AbstractMatrix{Num}, Σ::AbstractMatrix{Num})
     Σinv = try
-        inv(Σ)
+        symbolic_inverse(Σ)
     catch err
         throw(ArgumentError("the transition matrix Σ could not be inverted symbolically " *
                             "($(sprint(showerror, err))); is every infected state eventually left?"))
     end
     return tidy(-T * Σinv)
 end
+
 function _large_domain(T::AbstractMatrix{<:Real}, Σ::AbstractMatrix{<:Real})
     return -T / Σ
 end
@@ -78,6 +79,10 @@ when Catalyst is loaded).
     [`reaction_is_transmission`](@ref)), a `Function` is called on each `Reaction`, and a
     `Vector{Bool}` or vector of reaction indices marks the transmission reactions; the
     term-based strategies above are also accepted and then applied to the network's ODEs.
+  - `autonomous`: when `false`, explicit dependence of the equations on time is allowed (the
+    independent variable then appears in `T` and `Σ`); this is what
+    [`effective_reproduction_number`](@ref) uses for models with time-varying rates, and
+    is not meaningful for `R₀` at an infection-free steady state.
   - `warn`: warn when an entry of `T` is manifestly negative, which means a term that
     *removes* individuals from an infected compartment was classified as a transmission
     (for example density-dependent death `-d (S + I) I`, which involves an uninfected
@@ -90,8 +95,9 @@ counts as a transmission give different next-generation matrices and different v
 infection-free steady state is unstable (Diekmann et al. 2010, section 3.1 and appendix A).
 """
 function next_generation_matrix(sys::AbstractSystem, infected;
-        equilibrium = nothing, transmission = :auto, warn::Bool = true)
-    sub = infected_subsystem(sys, infected)
+        equilibrium = nothing, transmission = :auto, warn::Bool = true,
+        autonomous::Bool = true)
+    sub = infected_subsystem(sys, infected; autonomous)
     x, y = sub.infected, sub.uninfected
     eq = _equilibrium(sys, infected, equilibrium, x, y)
     (F, G), method = _split(sub.f_infected, x, y, transmission)
@@ -260,9 +266,9 @@ function _combinations(n, r)
     end
     return out
 end
-_factor_columns(T::AbstractMatrix{Num}, Rm) = tidy(T * Rm' * inv(Rm * Rm'))
+_factor_columns(T::AbstractMatrix{Num}, Rm) = tidy(T * Rm' * symbolic_inverse(Rm * Rm'))
 _factor_columns(T::AbstractMatrix{<:Real}, Rm) = T * Rm' / (Rm * Rm')
-_small(Rm::AbstractMatrix{Num}, Σ, C) = tidy(-Rm * inv(Σ) * C)
+_small(Rm::AbstractMatrix{Num}, Σ, C) = tidy(-Rm * symbolic_inverse(Σ) * C)
 _small(Rm::AbstractMatrix{<:Real}, Σ, C) = -(Rm / Σ) * C
 
 """
@@ -272,7 +278,9 @@ The matrix `-Σ⁻¹` of expected sojourn times: entry `(i, j)` is the expected 
 individual now in infected state `j` will spend in state `i` over its remaining infected
 life (Diekmann et al. 2010, section 3.1).
 """
-mean_sojourn_times(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}}) = tidy(-inv(ngm.Σ))
+function mean_sojourn_times(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}})
+    tidy(-symbolic_inverse(ngm.Σ))
+end
 mean_sojourn_times(ngm::NextGenerationMatrix{<:AbstractMatrix{<:Real}}) = -inv(ngm.Σ)
 
 """
