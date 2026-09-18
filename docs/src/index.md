@@ -53,15 +53,17 @@ effective_reproduction_number(seir, [E, I])
 ```
 
 It can be evaluated along a simulated trajectory, or added to the system as an observed
-variable `Rt(t)` that the solver returns directly:
+variable `Rt(t)` that the solver returns directly. Here `R_t` starts at `R₀` and falls
+below one as susceptibles are depleted, which is when the epidemic peaks:
 
 ```@example index
-using OrdinaryDiffEqTsit5
+using OrdinaryDiffEqTsit5, Plots
 seir_Rt, Rt = add_effective_reproduction_number(seir, [E, I])
 prob = ODEProblem(seir_Rt, [S => 999.0, E => 0.0, I => 1.0, R => 0.0,
                             β => 0.5, σ => 0.25, γ => 0.2, μ => 0.01, N => 1e3], (0.0, 120.0))
-sol = solve(prob, Tsit5(); saveat = 30.0)
-sol[Rt]
+sol = solve(prob, Tsit5(); saveat = 1.0)
+plot(sol; idxs = [Rt], label = "R_t", xlabel = "time (days)", ylabel = "R_t", linewidth = 2)
+hline!([1.0]; label = "threshold", linestyle = :dash, color = :black)
 ```
 
 ## What the package provides
