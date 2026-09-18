@@ -2378,8 +2378,9 @@ vertical-align: -.125em;
 <p>Your own quantities work too. Each definition is solved for one parameter, which is then eliminated from the matrices:</p>
 <div id="14" class="cell" data-execution_count="1">
 <div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb10"><pre class="sourceCode julia code-with-copy"><code class="sourceCode julia"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="pp">@parameters</span> R₁ R₂</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>ab2 <span class="op">=</span> <span class="fu">abbreviate</span>(ngm, [R₁ <span class="op">=&gt;</span> β₁₁ <span class="op">*</span> ν₁ <span class="op">/</span> ((ν₁ <span class="op">+</span> μ) <span class="op">*</span> (γ₁ <span class="op">+</span> μ)), R₂ <span class="op">=&gt;</span> β₂₂ <span class="op">*</span> ν₂ <span class="op">/</span> ((ν₂ <span class="op">+</span> μ) <span class="op">*</span> (γ₂ <span class="op">+</span> μ))])</span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>ab2.K</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>ab2 <span class="op">=</span> <span class="fu">abbreviate</span>(</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>    ngm, [R₁ <span class="op">=&gt;</span> β₁₁ <span class="op">*</span> ν₁ <span class="op">/</span> ((ν₁ <span class="op">+</span> μ) <span class="op">*</span> (γ₁ <span class="op">+</span> μ)), R₂ <span class="op">=&gt;</span> β₂₂ <span class="op">*</span> ν₂ <span class="op">/</span> ((ν₂ <span class="op">+</span> μ) <span class="op">*</span> (γ₂ <span class="op">+</span> μ))])</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>ab2.K</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <div class="cell-output cell-output-display" data-execution_count="1">
 <pre><code>2×2 Matrix{Num}:
                          (N₁*R₁) / (N₁ + N₂)  …  (N₁*β₁₂*ν₂) / ((N₁ + N₂)*(γ₂ + μ)*(μ + ν₂))
