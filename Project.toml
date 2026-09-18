@@ -5,27 +5,38 @@ version = "0.1.0"
 
 [deps]
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 ModelingToolkit = "961ee093-0014-501f-94e3-6117800e7a78"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
 SymbolicIndexingInterface = "2efcf032-c050-4f8e-a9bb-153293bab1f5"
 SymbolicUtils = "d1185830-fcd6-423d-90d6-eec64667417b"
 Symbolics = "0c5d862f-8b57-4792-8d23-62f2024744c7"
 
 [weakdeps]
 Catalyst = "479239e8-5488-4da2-87a7-35f2df7eef83"
+Latexify = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
 
 [extensions]
 ReproductiveNumbersCatalystExt = "Catalyst"
+ReproductiveNumbersLatexifyExt = "Latexify"
 
 [compat]
 Aqua = "0.8"
 Catalyst = "16"
 DocStringExtensions = "0.9"
+ForwardDiff = "0.10, 1"
+Latexify = "0.16"
 LinearAlgebra = "1.10"
 ModelingToolkit = "11"
+Nemo = "0.47, 0.48, 0.49, 0.50, 0.51, 0.52, 0.53, 0.54, 0.55, 0.56"
+NonlinearSolve = "3, 4"
 OrdinaryDiffEqTsit5 = "1, 2"
 Random = "1.10"
 SafeTestsets = "0.1"
+SciMLBase = "2, 3"
+SteadyStateDiffEq = "2"
 SymbolicIndexingInterface = "0.3"
 SymbolicUtils = "4"
 Symbolics = "7"
@@ -35,10 +46,13 @@ julia = "1.10"
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 Catalyst = "479239e8-5488-4da2-87a7-35f2df7eef83"
+Latexify = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
+Nemo = "2edaba10-b0f1-5616-af89-8c11ac63239a"
+NonlinearSolve = "8913a72c-1f9b-4ce2-8d82-65094dcecaec"
 OrdinaryDiffEqTsit5 = "b1df2697-797e-41e3-8120-5422d3b24e4a"
-Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 SafeTestsets = "1bc83da4-3b8d-516f-aca4-4fe02f6d838f"
+SteadyStateDiffEq = "9672c7b4-1e72-59bd-8a11-6ac3964bc41f"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Aqua", "Catalyst", "OrdinaryDiffEqTsit5", "Random", "SafeTestsets", "Test"]
+test = ["Aqua", "Catalyst", "Latexify", "Nemo", "NonlinearSolve", "OrdinaryDiffEqTsit5", "SafeTestsets", "SteadyStateDiffEq", "Test"]

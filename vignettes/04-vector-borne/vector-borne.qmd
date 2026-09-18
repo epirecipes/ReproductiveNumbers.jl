@@ -11,7 +11,7 @@ In the Ross–Macdonald model of malaria, infection passes from humans to mosqui
 back. There are two states-at-infection (`I_H` and `I_V`) and no within-type transmission,
 so `K` is `2 × 2` with a zero diagonal and `R₀ = √(K[1,2] K[2,1])`. The square root
 reflects a choice: counting a mosquito infected by a human as a "new infection" makes a
-human-to-human cycle two generations long. Diekmann et al. (2010, section 3) emphasise that
+human-to-human cycle two generations long. Diekmann et al. (2010, section 3.1 and appendix A) emphasise that
 different decompositions into transmissions and transitions give different reproduction
 numbers, all with the same threshold. This vignette shows both.
 

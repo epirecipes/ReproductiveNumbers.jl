@@ -103,6 +103,23 @@ function _negsum(x)
 end
 
 """
+$(TYPEDSIGNATURES)
+
+`true` if the sign of `x` can be read off syntactically as negative: a negative number, or a
+product/quotient/sum whose factored-out sign is `-1` (see `_pull_sign`). Used to warn about
+transmission terms that decrease an infected compartment.
+"""
+function manifestly_negative(x)
+    y = _value(x)
+    y isa Number && return y < 0
+    if SymbolicUtils.isdiv(y)
+        num, den = arguments(y)
+        return _pull_sign(num)[1] * _pull_sign(den)[1] == -1
+    end
+    return _pull_sign(y)[1] == -1
+end
+
+"""
     tidy(x; fractions = true)
 
 Cosmetic normalisation of a symbolic expression: cancel paired minus signs and, if
@@ -211,8 +228,10 @@ function symbolic_iszero(x; numeric::Bool = true, nprobe::Int = 4, atol::Real = 
     y = _value(x)
     y isa Number && return iszero(y)
     vars = symbolic_variables(Num(y))
+    # a private, fixed-seed generator makes the probes reproducible from run to run
+    rng = Xoshiro(0x9e3779b97f4a7c15)
     for _ in 1:nprobe
-        vals = Dict(v => 0.5 + rand() for v in vars)
+        vals = Dict(v => 0.5 + rand(rng) for v in vars)
         r = _fold(substitute(Num(y), vals))
         r isa Number || break
         abs(r) <= atol || return false
@@ -229,7 +248,7 @@ function symbolic_iszero(x; numeric::Bool = true, nprobe::Int = 4, atol::Real = 
     numeric || return false
     # all probes vanished (or could not be evaluated to a number)
     for _ in 1:nprobe
-        vals = Dict(v => 0.5 + rand() for v in vars)
+        vals = Dict(v => 0.5 + rand(rng) for v in vars)
         r = _fold(substitute(Num(y), vals))
         r isa Number || return false
         abs(r) <= atol || return false

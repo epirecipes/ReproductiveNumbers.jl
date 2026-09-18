@@ -1,0 +1,79 @@
+---
+title: "10. Staged progression: K stays 1×1 while K_L grows"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+The staged-progression model (van den Driessche & Watmough 2002, section 4.3) has `n`
+infectious stages in series, each with its own infectivity `βₖ` and progression rate
+`νₖ`. All infections enter stage 1, so whatever `n` is, the next-generation matrix `K` is
+`1 × 1` and `R₀` is a sum over stages, whereas the large-domain matrix `K_L` is `n × n`.
+This vignette builds the model for arbitrary `n` with array symbolics.
+
+## The model
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+function staged_model(n)
+    @parameters β[1:n] ν[1:n] d N
+    @variables S(t) I(t)[1:n]
+    βv, νv, Iv = collect(β), collect(ν), collect(I)
+    λ = S * sum(βv[k] * Iv[k] for k in 1:n) / N
+    eqs = [D(S) ~ -λ, D(Iv[1]) ~ λ - (νv[1] + d) * Iv[1]]
+    for k in 2:n
+        push!(eqs, D(Iv[k]) ~ νv[k - 1] * Iv[k - 1] - (νv[k] + d) * Iv[k])
+    end
+    sys = complete(System(eqs, t; name = :staged))
+    return sys, S, Iv, βv, νv, d, N
+end
+sys, S, Iv, βv, νv, d, N = staged_model(4)
+ngm = next_generation_matrix(sys, Iv; equilibrium = Dict(S => N))
+```
+
+## Large and restricted domains
+
+```{julia}
+size(ngm.K_L), size(ngm.K), states_at_infection(ngm)
+```
+
+`-Σ⁻¹` is lower triangular: the expected time spent in stage `k` by someone now in stage
+`j ≤ k` is the probability of reaching `k` times the mean stay there.
+
+```{julia}
+mean_sojourn_times(ngm)
+```
+
+```{julia}
+R0 = basic_reproduction_number(ngm)
+```
+
+This is equation (4.4) of van den Driessche & Watmough:
+
+```{julia}
+paper = sum(βv[k] * prod(νv[j] for j in 1:(k - 1); init = 1) / prod(νv[j] + d for j in 1:k) for k in 1:4)
+symbolic_isequal(R0, paper)
+```
+
+## Which stage drives transmission?
+
+Elasticities with respect to the stage infectivities are the fractions of `R₀` contributed
+by each stage:
+
+```{julia}
+vals = Dict{Any, Any}(d => 0.01, N => 1.0)
+for k in 1:4
+    vals[βv[k]] = [0.1, 0.5, 0.3, 0.05][k]
+    vals[νv[k]] = [0.5, 0.2, 0.2, 0.1][k]
+end
+e = elasticities(ngm, vals; params = βv)
+[e[βv[k]] for k in 1:4]
+```
+
+```{julia}
+sum(e[βv[k]] for k in 1:4)
+```

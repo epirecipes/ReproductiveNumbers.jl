@@ -30,7 +30,7 @@ function seir_demography_model()
 end
 
 """
-Example 2.1 of Diekmann et al. (2010): SEI with two latent categories.
+section 2.1 of Diekmann et al. (2010): SEI with two latent categories.
 """
 function two_latent_model()
     @parameters β p ν₁ ν₂ γ μ N
@@ -45,7 +45,7 @@ function two_latent_model()
 end
 
 """
-Example 2.2 of Diekmann et al. (2010): SEI with two host categories.
+section 2.2 of Diekmann et al. (2010): SEI with two host categories.
 """
 function two_host_model()
     @parameters β₁₁ β₁₂ β₂₁ β₂₂ ν₁ ν₂ γ₁ γ₂ μ N₁ N₂

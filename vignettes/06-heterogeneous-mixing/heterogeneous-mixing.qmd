@@ -8,7 +8,7 @@ date: today
 ## Overview
 
 With several types of host the next-generation matrix has several states-at-infection.
-This vignette works through Example 2.2 of Diekmann et al. (2010), two host categories
+This vignette works through section 2.2 of Diekmann et al. (2010), two host categories
 with a general `2 × 2` closed form, then the special case of separable mixing (rank one),
 non-interacting strains (block structure, `R₀` is a maximum), and finally an
 age-structured model with a contact matrix where no closed form exists and `R₀` is
@@ -49,8 +49,8 @@ R0 = basic_reproduction_number(ngm)
 
 ## Separable mixing
 
-If `β_ij = a_i b_j`, `K` has rank one and `R₀` collapses to the trace (section 2.3 of the
-paper). The package detects this automatically:
+If `β_ij = a_i b_j`, `K` has rank one and `R₀` collapses to the trace (section 2.2 of the
+paper, and the small-domain construction of section 3.3). The package detects this automatically:
 
 ```{julia}
 @parameters a₁ a₂ b₁ b₂

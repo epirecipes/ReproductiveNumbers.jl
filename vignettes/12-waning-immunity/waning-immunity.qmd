@@ -1,0 +1,88 @@
+---
+title: "12. Waning immunity and reinfection: checking R₀ against the endemic equilibrium"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+In an SEIRS model immunity wanes at rate `ω` and recovered individuals can be reinfected
+with reduced susceptibility `σ`. Reinfection of `R` is a transmission (it creates a new
+exposed individual) and the default rule recognises it because the term involves the
+uninfected state `R`. At the infection-free steady state nobody has recovered, so
+reinfection does not change `R₀`; it does change the endemic equilibrium. This vignette
+verifies the threshold against the long-run behaviour of the full non-linear model, using
+`SteadyStateProblem` and `NonlinearSolve`, over a sweep of the transmission rate.
+
+## The model
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters β σ κ γ μ ω N
+@variables S(t) E(t) I(t) R(t)
+λ = β * I / N
+eqs = [D(S) ~ μ * N + ω * R - λ * S - μ * S,
+       D(E) ~ λ * S + σ * λ * R - (κ + μ) * E,
+       D(I) ~ κ * E - (γ + μ) * I,
+       D(R) ~ γ * I - σ * λ * R - ω * R - μ * R]
+seirs = complete(System(eqs, t; name = :seirs))
+ngm = next_generation_matrix(seirs, [E, I])
+transmission_method(ngm).F
+```
+
+```{julia}
+R0 = basic_reproduction_number(ngm)
+```
+
+The reinfection term `σ λ R` is in `F` but contributes nothing to `T` because `R = 0` at
+the infection-free steady state. `R₀` is the SEIR value.
+
+## Steady states over a parameter sweep
+
+For each `β` we solve for the state the model settles into after a small introduction, and
+compare with `R₀`:
+
+```{julia}
+using SteadyStateDiffEq, OrdinaryDiffEqTsit5, NonlinearSolve
+base = Dict(σ => 0.5, κ => 0.2, γ => 0.1, μ => 0.01, ω => 0.02, N => 1000.0)
+rows = map((0.05, 0.1, 0.15, 0.2, 0.4)) do βval
+    p = merge(base, Dict(β => βval))
+    u0 = [S => 999.0, E => 0.0, I => 1.0, R => 0.0]
+    ss = solve(SteadyStateProblem(ODEProblem(seirs, [u0; collect(p)], (0.0, 1.0))),
+               DynamicSS(Tsit5()); abstol = 1e-10, reltol = 1e-10)
+    (β = βval, R0 = basic_reproduction_number(ngm, p), I_star = ss[I], S_star = ss[S])
+end
+rows
+```
+
+The infection dies out exactly when `R₀ ≤ 1`, and above the threshold the endemic
+prevalence increases with `R₀`. Unlike the SEIR model without reinfection, the endemic
+susceptible fraction is *not* `1/R₀`, because the effective reproduction number at the
+endemic state also counts reinfections of `R`:
+
+```{julia}
+ngm_state = next_generation_matrix(seirs, [E, I]; equilibrium = Dict())
+R_state = basic_reproduction_number(ngm_state)
+```
+
+At the endemic equilibrium this effective reproduction number equals one. We can check
+this with `NonlinearSolve` on the last row of the sweep:
+
+```{julia}
+p = merge(base, Dict(β => 0.4))
+nl = solve(NonlinearProblem(seirs, [[S => 300.0, E => 20.0, I => 30.0, R => 650.0]; collect(p)]), NewtonRaphson())
+state = Dict(S => nl[S], R => nl[R])
+ReproductiveNumbers.to_number(substitute(R_state, merge(p, state)))
+```
+
+## The role of waning
+
+Waning immunity does not enter `R₀` either, but it determines how large the endemic
+prevalence is. Elasticities of `R₀` confirm that `ω` and `σ` are absent:
+
+```{julia}
+elasticities(ngm)
+```

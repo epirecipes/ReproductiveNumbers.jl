@@ -43,7 +43,7 @@ rejects `sorry`, `admit` and new axioms.
 
 **`Examples.lean`**
 
-  - The SIR, SEIR, two-latent-stage (Example 2.1) and two-type (Example 4.1) models of the
+  - The SIR, SEIR, two-latent-stage (section 2.1) and two-type (section 4.1) models of the
     paper and the vignettes, with explicit inverses of `Σ`, `K_L`, `K`, and `R₀`.
 
 ## Building the proofs

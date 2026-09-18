@@ -85,6 +85,15 @@ end
     @test dfe2[e.I] == 0
 end
 
+@testset "error paths" begin
+    @parameters β γ
+    @variables S(t) I(t) x(t)
+    # an algebraic equation that cannot be compiled away
+    eqs = [D(S) ~ -β * S * I, D(I) ~ β * S * I - γ * I, 0 ~ x^2 + 1 + S]
+    sys = complete(System(eqs, t; name = :bad))
+    @test_throws ArgumentError ReproductiveNumbers.ode_right_hand_sides(sys)
+end
+
 @testset "infected_subsystem" begin
     m = seir_demography_model()
     sub = infected_subsystem(m.sys, [:E, :I])

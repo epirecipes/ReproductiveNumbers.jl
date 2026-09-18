@@ -16,7 +16,8 @@ function evaluate(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}}, p)
     Σ = to_number.(substitute.(ngm.Σ, Ref(d)))
     eq = Dict{Num, Any}(k => _maybe_number(substitute(Num(v), d))
     for (k, v) in ngm.equilibrium)
-    return assemble(ngm.infected, ngm.uninfected, eq, T, Σ)
+    return assemble(ngm.infected, ngm.uninfected, eq, T, Σ; F = ngm.F, G = ngm.G,
+        method = ngm.method)
 end
 evaluate(ngm::NextGenerationMatrix{<:AbstractMatrix{<:Real}}, p) = ngm
 function _maybe_number(x)
@@ -33,7 +34,8 @@ The basic reproduction number `R₀`, the spectral radius of the next-generation
 (equivalently of `K_L`).
 
 With a symbolic `ngm` and no parameter values, a closed-form expression is returned when
-one exists (see [`spectral_radius`](@ref)), otherwise a [`NoClosedFormError`](@ref) is
+one exists (see [`spectral_radius`](@ref)); if `K` admits none, the small-domain matrix
+[`small_domain_matrix`](@ref) is tried, and otherwise a [`NoClosedFormError`](@ref) is
 thrown. With parameter values `p` (see [`evaluate`](@ref)) a `Float64` is returned.
 
 The three-argument form builds the next-generation matrix first; keyword arguments are
@@ -41,7 +43,16 @@ passed to [`next_generation_matrix`](@ref).
 """
 function basic_reproduction_number(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}};
         numeric_rank_check::Bool = true)
-    return spectral_radius(ngm.K; numeric_rank_check)
+    try
+        return spectral_radius(ngm.K; numeric_rank_check)
+    catch err
+        err isa NoClosedFormError || rethrow()
+        # K may be reducible to a smaller matrix with the same non-zero spectrum when T
+        # has low rank (Diekmann et al. 2010, section 3.3): try the small domain.
+        K_S = small_domain_matrix(ngm)
+        size(K_S, 1) < size(ngm.K, 1) || rethrow()
+        return spectral_radius(K_S; numeric_rank_check)
+    end
 end
 function basic_reproduction_number(ngm::NextGenerationMatrix{<:AbstractMatrix{<:Real}})
     spectral_radius(ngm.K)
@@ -106,6 +117,7 @@ function _type_indices(ngm, types)
 end
 
 function _type_matrix(K::AbstractMatrix{Num}, idx)
+    # no symbolic check that ρ((I - P) K) < 1 is possible; see the numeric method
     n = size(K, 1)
     P = zeros(Int, n, n)
     for i in idx

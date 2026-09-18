@@ -1,0 +1,87 @@
+---
+title: "9. Bovine viral diarrhoea: persistently infected animals as a second state-at-infection"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+Section 4.3 of Diekmann, Heesterbeek and Roberts (2010) is a model of bovine viral
+diarrhoea (BVD). Cattle infected horizontally pass through an exposed (`E`) and a transiently
+infectious (`I`) stage. A fraction `p₁` of those recovering while pregnant carry an infected
+foetus (`Z`, immune themselves), and with probability `p₂` the calf is born *persistently
+infected* (`P`): highly infectious for life (shortened by `b`), and itself giving birth to
+persistently infected calves at a reduced rate `μ - a`. There are therefore two
+states-at-infection, `E` and `P`, and `K` is `2 × 2` with a non-zero diagonal, which exercises
+the full quadratic closed form.
+
+As in vignette 8, the paper gives only the infected subsystem; the full model below adds a
+susceptible class with balanced births and deaths.
+
+## The model
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters β₁ β₂ ν γ μ p₁ p₂ α a b N
+@variables S(t) E(t) I(t) Z(t) P(t) R(t)
+horizontal = S * (β₁ * I + β₂ * P) / N
+eqs = [D(S) ~ μ * N - horizontal - μ * S,
+       D(E) ~ horizontal - (ν + μ) * E,
+       D(I) ~ ν * E - (γ + μ) * I,
+       D(Z) ~ p₁ * γ * I - (α + μ) * Z,
+       D(P) ~ p₂ * α * Z + (μ - a) * P - (μ + b) * P,
+       D(R) ~ (1 - p₁) * γ * I + α * Z - μ * R]
+bvd = complete(System(eqs, t; name = :bvd))
+```
+
+Three kinds of event create a new infected animal: horizontal infection (into `E`), the
+birth of a persistently infected calf from a `Z` cow (`p₂ α Z`), and the birth of a
+persistently infected calf from a `P` cow (`(μ - a) P`). The transition `I → Z` is *not* a
+transmission: the foetus is counted when it is born.
+
+```{julia}
+ngm = next_generation_matrix(bvd, [E, I, Z, P];
+                             transmission = [horizontal, 0, 0, p₂ * α * Z + (μ - a) * P])
+```
+
+## The next-generation matrix
+
+```{julia}
+states_at_infection(ngm), ngm.K
+```
+
+Reading the entries: `K[1, 1]` is the number of horizontal infections caused by one
+exposed animal that survives latency and is infectious for `1/(γ + μ)`; `K[1, 2]` those
+caused by a persistently infected animal over its life `1/(μ + b)`; `K[2, 1]` is the
+probability that an exposed animal produces a persistently infected calf; and `K[2, 2]` the
+number of persistently infected calves born to one persistently infected animal.
+
+```{julia}
+R0 = basic_reproduction_number(ngm)
+```
+
+## Two routes to persistence
+
+```{julia}
+vals = Dict(β₁ => 0.5, β₂ => 5.0, ν => 0.2, γ => 0.1, μ => 0.003, p₁ => 0.3, p₂ => 0.5,
+            α => 0.01, a => 0.001, b => 0.01, N => 1000.0)
+num = evaluate(ngm, vals)
+(basic_reproduction_number(num), num.K)
+```
+
+Type reproduction numbers separate the contributions: `T_E` is the number of horizontal
+infections traced back to one horizontal infection through any number of persistently
+infected generations, and `T_P` the same for the persistently infected type. Removing all
+persistently infected animals at birth eliminates the infection only if `T_P` exceeds one
+and `K[1,1]` is below one:
+
+```{julia}
+(type_reproduction_number(num, E), type_reproduction_number(num, P), num.K[1, 1])
+```
+
+```{julia}
+elasticities(ngm, vals; params = [β₁, β₂, p₁, p₂, b])
+```

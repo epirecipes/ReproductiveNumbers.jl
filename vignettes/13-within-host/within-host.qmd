@@ -1,0 +1,77 @@
+---
+title: "13. A within-host model: target cells, infected cells and virions"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+The same machinery applies within a host. In the basic model of viral dynamics (Perelson
+and Nelson 1999), target cells `T` are produced at rate `s` and die at rate `d`, free
+virions `V` infect target cells at rate `β`, infected cells `I` die at rate `δ` and produce
+virions at rate `p`, and virions are cleared at rate `c`. Both `I` and `V` are "infected"
+states, and the choice of which events count as reproduction is exactly the vector–host
+question of vignette 4: counting both cell infection and virion production gives
+`R₀ = √(p β T₀ / (c δ))`, counting only cell infection gives the familiar
+`R₀ = p β T₀ / (c δ)`.
+
+## The model
+
+```{julia}
+using ReproductiveNumbers, Catalyst, ModelingToolkit, Symbolics
+
+vd = @reaction_network viral_dynamics begin
+    @parameters s d β δ p c
+    s, 0 --> T
+    d, T --> 0
+    β, T + V --> I + V
+    δ, I --> 0
+    p, I --> I + V
+    c, V --> 0
+end
+@unpack T, I, V, s, d, β, δ, p, c = vd
+```
+
+The infection-free steady state has `T₀ = s/d` and is found automatically:
+
+```{julia}
+disease_free_equilibrium(vd, [I, V])
+```
+
+## Two generations per cycle
+
+By the stoichiometry rule both `T + V --> I + V` (a new infected cell) and `I --> I + V`
+(a new virion) are transmissions:
+
+```{julia}
+ngm = next_generation_matrix(vd, [I, V])
+```
+
+```{julia}
+basic_reproduction_number(ngm)
+```
+
+## One generation per cycle
+
+Counting only the infection of cells as reproduction, virion production is a transition:
+
+```{julia}
+ngm_cells = next_generation_matrix(vd, [I, V]; transmission = rx -> any(isequal(I), rx.products) && any(isequal(T), rx.substrates))
+states_at_infection(ngm_cells), basic_reproduction_number(ngm_cells)
+```
+
+The two conventions give `R₀` and `R₀²`; both have the same threshold. The mean sojourn
+times explain the second form: an infected cell "spends" `p/(δ c)` virion-lifetimes
+producing virus.
+
+```{julia}
+mean_sojourn_times(ngm_cells)
+```
+
+## Numbers
+
+```{julia}
+vals = Dict(s => 1e4, d => 0.01, β => 2e-7, δ => 0.5, p => 100.0, c => 5.0)
+(basic_reproduction_number(ngm, vals), basic_reproduction_number(ngm_cells, vals))
+```

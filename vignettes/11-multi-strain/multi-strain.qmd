@@ -1,0 +1,114 @@
+---
+title: "11. Multiple strains: block structure, cross-immunity and co-infection"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+With several pathogen strains the next-generation matrix often splits into blocks, one per
+strain, because at the infection-free state no infected individual of one strain produces
+infections of another. `R₀` is then the largest strain-specific reproduction number, and
+the package returns a symbolic `max`. This holds even when the strains interact away from
+the infection-free state, through cross-immunity or co-infection, because those
+interactions are quadratic in the infected states and vanish on linearisation. This
+vignette shows both cases, and a case where the block structure is broken (mutation
+between strains).
+
+## Two strains with partial cross-immunity
+
+Recovered from strain 1 are protected from strain 2 by a factor `1 - σ₁₂`, and vice versa.
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters β₁ β₂ γ₁ γ₂ σ₁₂ σ₂₁ μ N
+@variables S(t) I₁(t) I₂(t) R₁(t) R₂(t) J₁(t) J₂(t) R(t)
+# Jᵢ: infected with strain i after recovering from the other strain
+λ₁ = β₁ * (I₁ + J₁) / N
+λ₂ = β₂ * (I₂ + J₂) / N
+eqs = [D(S) ~ μ * N - (λ₁ + λ₂) * S - μ * S,
+       D(I₁) ~ λ₁ * S - (γ₁ + μ) * I₁,
+       D(I₂) ~ λ₂ * S - (γ₂ + μ) * I₂,
+       D(R₁) ~ γ₁ * I₁ - σ₂₁ * λ₂ * R₁ - μ * R₁,
+       D(R₂) ~ γ₂ * I₂ - σ₁₂ * λ₁ * R₂ - μ * R₂,
+       D(J₁) ~ σ₁₂ * λ₁ * R₂ - (γ₁ + μ) * J₁,
+       D(J₂) ~ σ₂₁ * λ₂ * R₁ - (γ₂ + μ) * J₂,
+       D(R) ~ γ₁ * J₁ + γ₂ * J₂ - μ * R]
+two = complete(System(eqs, t; name = :two_strain))
+suggest_infected(two)
+```
+
+```{julia}
+ngm = next_generation_matrix(two, [I₁, J₁, I₂, J₂])
+irreducible_blocks(ngm.K)
+```
+
+At the infection-free state `R₁ = R₂ = 0`, so nobody is available for secondary infection
+and the `J` states are not states-at-infection at all:
+
+```{julia}
+states_at_infection(ngm), ngm.K
+```
+
+```{julia}
+basic_reproduction_number(ngm)
+```
+
+The invasion of strain 2 into a population where strain 1 is endemic is a different
+question, answered by linearising at strain 1's endemic equilibrium instead. The
+`equilibrium` keyword accepts any state; here we leave `S`, `R₁` symbolic and read them
+from an endemic equilibrium:
+
+```{julia}
+ngm_inv = next_generation_matrix(two, [I₂, J₂]; equilibrium = Dict(R₂ => 0, R => 0))
+basic_reproduction_number(ngm_inv)
+```
+
+This is strain 2's *invasion reproduction number*: the susceptibles plus the partially
+protected recovered from strain 1, weighted by the sojourn time of strain-2 infection.
+
+## Mutation breaks the block structure
+
+If strain 1 mutates into strain 2 during infection at rate `m`, an individual infected
+with strain 1 can produce strain-2 infections, and the blocks merge into one irreducible
+`2 × 2` matrix with a full closed form.
+
+```{julia}
+@parameters m
+eqs_m = [D(S) ~ μ * N - (β₁ * I₁ + β₂ * I₂) * S / N - μ * S,
+         D(I₁) ~ β₁ * I₁ * S / N - (γ₁ + μ + m) * I₁,
+         D(I₂) ~ β₂ * I₂ * S / N + m * I₁ - (γ₂ + μ) * I₂,
+         D(R) ~ γ₁ * I₁ + γ₂ * I₂ - μ * R]
+mut = complete(System(eqs_m, t; name = :mutation))
+ngm_m = next_generation_matrix(mut, [I₁, I₂])
+ngm_m.K
+```
+
+`K[2, 1]` is the number of strain-2 infections caused by a strain-1 infected individual who
+mutates before recovering. The matrix is triangular, so the spectrum is still the two
+diagonal entries:
+
+```{julia}
+basic_reproduction_number(ngm_m)
+```
+
+## Co-infection
+
+Co-infection terms such as `I₁ I₂` do not affect `R₀` because they vanish at the
+infection-free state:
+
+```{julia}
+@parameters κ
+@variables C(t)
+eqs_c = [D(S) ~ -(β₁ * I₁ + β₂ * I₂) * S / N,
+         D(I₁) ~ β₁ * I₁ * S / N - γ₁ * I₁ - κ * I₁ * I₂,
+         D(I₂) ~ β₂ * I₂ * S / N - γ₂ * I₂ - κ * I₁ * I₂,
+         D(C) ~ 2κ * I₁ * I₂ - (γ₁ + γ₂) * C,
+         D(R) ~ γ₁ * I₁ + γ₂ * I₂ + (γ₁ + γ₂) * C]
+co = complete(System(eqs_c, t; name = :coinfection))
+ngm_c = next_generation_matrix(co, [I₁, I₂, C]; equilibrium = Dict(S => N, R => 0))
+states_at_infection(ngm_c), basic_reproduction_number(ngm_c)
+```

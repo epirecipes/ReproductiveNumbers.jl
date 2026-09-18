@@ -81,6 +81,7 @@ default and lets you override it, see
  1. [`irreducible_blocks`](@ref) permutes ``K`` to block triangular form using the strongly
     connected components of its non-zero pattern; ``\rho(K)`` is the maximum of the
     spectral radii of the diagonal blocks.
+
  2. Each irreducible block is handled in closed form if it is ``1 \times 1``, has rank one
     (``\rho = \operatorname{trace}``), or is ``2 \times 2``:
     

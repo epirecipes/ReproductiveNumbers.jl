@@ -102,7 +102,8 @@ function _irreducible_spectral_radius(B::AbstractMatrix{Num}; numeric::Bool)
     throw(NoClosedFormError("no closed form is available for the dominant eigenvalue of the " *
                             "irreducible $(n)×$(n) block\n$(sprint(show, MIME("text/plain"), B))\n" *
                             "which is neither rank one nor 2×2; evaluate numerically with " *
-                            "`basic_reproduction_number(ngm, parameter_values)`"))
+                            "`basic_reproduction_number(ngm, parameter_values)` or inspect " *
+                            "`characteristic_polynomial(ngm.K)`"))
 end
 
 """

@@ -7,7 +7,7 @@ date: today
 
 ## Overview
 
-Example 2.1 of Diekmann, Heesterbeek and Roberts (2010) is an SEI model in which newly
+section 2.1 of Diekmann, Heesterbeek and Roberts (2010) is an SEI model in which newly
 infected individuals enter one of two latent classes, `E₁` with probability `p` and `E₂`
 with probability `1 - p`, with different progression rates `ν₁`, `ν₂`. There are two
 states-at-infection, so `K` is `2 × 2`, but because the two classes are always entered in
@@ -43,7 +43,7 @@ ngm.T
 ngm.K
 ```
 
-Compare with equation (2.9) of the paper: `K[i, j]` is the expected number of new
+Compare with the matrix `K` displayed in section 2.1 of the paper: `K[i, j]` is the expected number of new
 infections of type `i` (entering `E₁` or `E₂`) produced by an individual who entered the
 infected population in state `j`. The second column differs from the first only by the
 factor `ν₂/(ν₂+μ)` versus `ν₁/(ν₁+μ)`, the probability of surviving the latent stage, and

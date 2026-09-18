@@ -1,0 +1,101 @@
+---
+title: "8. Vertical and sexual transmission: when K has no closed form but K_S does"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+Section 4.2 of Diekmann, Heesterbeek and Roberts (2010) considers a sexually transmitted
+infection in which infected adults of either sex also bear infected juveniles. There are
+four infected states (juvenile and adult, female and male) and all four are
+states-at-infection, so `K` is `4 × 4`. Its irreducible part is `3 × 3`, which has no
+closed-form dominant eigenvalue. But `T` has rank two, because only the two *adult* states
+transmit, and the small-domain matrix `K_S = -RΣ⁻¹C` of section 3.3 is `2 × 2`. The package
+falls back to `K_S` automatically.
+
+The paper only gives the linearised infected subsystem; the full model below is one
+consistent choice (susceptible adults are born at rate `μ`, minus the infected births).
+
+## The model
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics, LinearAlgebra
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters p μ ν₁ ν₂ γ₁ γ₂ β₁ β₂ N₁ N₂
+@variables S₁(t) J₁(t) I₁(t) S₂(t) J₂(t) I₂(t)
+eqs = [D(S₁) ~ μ * N₁ - p * μ * I₁ - β₁ * S₁ * I₂ / N₂ - μ * S₁,
+       D(J₁) ~ p * μ * I₁ - (ν₁ + μ) * J₁,
+       D(I₁) ~ ν₁ * J₁ + β₁ * S₁ * I₂ / N₂ - (γ₁ + μ) * I₁,
+       D(S₂) ~ μ * N₂ - p * μ * I₂ - β₂ * S₂ * I₁ / N₁ - μ * S₂,
+       D(J₂) ~ p * μ * I₂ - (ν₂ + μ) * J₂,
+       D(I₂) ~ ν₂ * J₂ + β₂ * S₂ * I₁ / N₁ - (γ₂ + μ) * I₂]
+sti = complete(System(eqs, t; name = :sti_vertical))
+```
+
+Vertical transmission `p μ Iᵢ` is linear in the infected states, so the default rule
+would file it as a transition (see the guide on choosing transmissions). We give the
+new-infection rates explicitly:
+
+```{julia}
+ngm = next_generation_matrix(sti, [J₁, I₁, J₂, I₂];
+                             transmission = [p * μ * I₁, β₁ * S₁ * I₂ / N₂,
+                                             p * μ * I₂, β₂ * S₂ * I₁ / N₁])
+```
+
+## K is singular
+
+```{julia}
+ngm.K
+```
+
+```{julia}
+symbolic_isequal(det(ngm.K), 0), irreducible_blocks(ngm.K)
+```
+
+The `3 × 3` block has rank two, so `spectral_radius` alone cannot give a closed form:
+
+```{julia}
+try
+    spectral_radius(ngm.K)
+catch err
+    err
+end
+```
+
+## The small domain
+
+```{julia}
+K_S = small_domain_matrix(ngm)
+```
+
+`K_S` counts generations of *infectious adults*: its diagonal entries are the expected
+number of infectious adults of the same sex produced through vertical transmission (an
+infected juvenile must survive to maturity, `νᵢ/(νᵢ + μ)`), and its off-diagonal entries
+the sexual transmissions. `basic_reproduction_number` uses it automatically:
+
+```{julia}
+R0 = basic_reproduction_number(ngm)
+```
+
+```{julia}
+vals = Dict(p => 0.3, μ => 0.02, ν₁ => 0.1, ν₂ => 0.1, γ₁ => 0.2, γ₂ => 0.25,
+            β₁ => 0.4, β₂ => 0.5, N₁ => 1000.0, N₂ => 1000.0)
+num = evaluate(ngm, vals)
+(basic_reproduction_number(num), ReproductiveNumbers.to_number(substitute(R0, vals)))
+```
+
+The non-zero spectra of `K` and `K_S` coincide:
+
+```{julia}
+nz(A) = sort(abs.(filter(x -> abs(x) > 1e-9, eigvals(A))))
+nz(num.K), nz(ReproductiveNumbers.to_number.(substitute.(K_S, Ref(vals))))
+```
+
+## Which parameters matter most?
+
+```{julia}
+elasticities(ngm, vals; params = [p, β₁, β₂, ν₁, γ₁])
+```

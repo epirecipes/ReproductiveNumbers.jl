@@ -5,9 +5,11 @@ $(TYPEDSIGNATURES)
 
 Given `T` and `Σ`, build the next-generation matrix with large domain `K_L = -T Σ⁻¹`, the
 selection matrix `E` of states-at-infection (non-zero rows of `T`) and the next-generation
-matrix `K = Eᵀ K_L E`.
+matrix `K = Eᵀ K_L E`. `F`, `G` and `method` record how the split was made (see
+[`NextGenerationMatrix`](@ref)).
 """
-function assemble(infected, uninfected, equilibrium, T::AbstractMatrix, Σ::AbstractMatrix)
+function assemble(infected, uninfected, equilibrium, T::AbstractMatrix, Σ::AbstractMatrix;
+        F = Num[], G = Num[], method::Symbol = :matrices)
     n = length(infected)
     size(T) == (n, n) && size(Σ) == (n, n) ||
         throw(DimensionMismatch("T and Σ must be $(n)×$(n)"))
@@ -19,7 +21,8 @@ function assemble(infected, uninfected, equilibrium, T::AbstractMatrix, Σ::Abst
     end
     K = _restrict(K_L, E)
     return NextGenerationMatrix(Vector{Num}(infected), Vector{Num}(uninfected),
-        Dict{Num, Any}(equilibrium), T, Σ, K_L, E, K, infected[rows])
+        Dict{Num, Any}(equilibrium), T, Σ, K_L, E, K, infected[rows],
+        Vector{Num}(F), Vector{Num}(G), method)
 end
 
 _structural_zero(x::Num) = symbolic_iszero(x; numeric = false)
@@ -38,11 +41,16 @@ function _large_domain(T::AbstractMatrix{<:Real}, Σ::AbstractMatrix{<:Real})
     return -T / Σ
 end
 
-_restrict(K_L::AbstractMatrix{Num}, E) = tidy(Num.(E' * K_L * E); fractions = false)
+function _restrict(K_L::AbstractMatrix{Num}, E)
+    Matrix{Num}(tidy(Num.(E' * K_L * E); fractions = false))
+end
 _restrict(K_L::AbstractMatrix{<:Real}, E) = E' * K_L * E
 
+const TERM_STRATEGIES = (:auto, :uninfected_dependence, :nonlinear_in_infected)
+
 """
-    next_generation_matrix(sys, infected; equilibrium = nothing, transmission = nothing)
+    next_generation_matrix(sys, infected; equilibrium = nothing, transmission = :auto,
+                           warn = true)
 
 Construct the [`NextGenerationMatrix`](@ref) of the ModelingToolkit system `sys`
 (a `System` built from ordinary differential equations, or a Catalyst `ReactionSystem`
@@ -52,35 +60,63 @@ when Catalyst is loaded).
 
   - `infected`: the infected state variables, as symbolic variables (`[E, I]`, `[sys.E, sys.I]`)
     or as `Symbol`s (`[:E, :I]`). Their order fixes the row and column order of `T`, `Σ`
-    and `K_L`.
+    and `K_L`. [`suggest_infected`](@ref) proposes candidates.
   - `equilibrium`: the state at which to linearise, as a `Dict`/pairs mapping unknowns to
     values or expressions (`Dict(S => N)`). Infected states default to zero. When
     omitted, [`disease_free_equilibrium`](@ref) is used. Any other state may be given to
     obtain a reproduction number at that state (for instance an effective reproduction
-    number with partial immunity).
+    number with partial immunity); `Dict()` leaves every uninfected state symbolic.
   - `transmission`: how to decide which terms of the infected equations are new
-    infections. `nothing` uses [`default_is_transmission`](@ref) (terms involving an
-    uninfected state, or non-linear in the infected states). A `Function` is called on
-    each additive term (a `Num`) and must return `Bool`. A `Vector` of expressions gives
-    the new-infection rate `F_i` of each infected compartment explicitly (van den
-    Driessche & Watmough's `𝓕`); the transitions are then the remainder of each equation.
-    For Catalyst models, a `Function` is instead called on each `Reaction`, and a
-    `Vector{Bool}` or vector of reaction indices marks the transmission reactions; by
-    default a reaction is a transmission if it increases the total number of infected
-    individuals.
+    infections. The named strategies are `:auto` (default; a term is a transmission if it
+    [`depends_on_uninfected`](@ref) states or is [`nonlinear_in_infected`](@ref) states),
+    `:uninfected_dependence` and `:nonlinear_in_infected` (each rule alone). A `Function`
+    is called on each additive term (a `Num`) and must return `Bool`. A `Vector` of
+    expressions gives the new-infection rate `F_i` of each infected compartment explicitly
+    (van den Driessche & Watmough's `𝓕`); the transitions are then the remainder of each
+    equation. For Catalyst models the default is `:stoichiometry` (a reaction is a
+    transmission if it increases the total number of infected individuals,
+    [`reaction_is_transmission`](@ref)), a `Function` is called on each `Reaction`, and a
+    `Vector{Bool}` or vector of reaction indices marks the transmission reactions; the
+    term-based strategies above are also accepted and then applied to the network's ODEs.
+  - `warn`: warn when an entry of `T` is manifestly negative, which means a term that
+    *removes* individuals from an infected compartment was classified as a transmission
+    (for example density-dependent death `-d (S + I) I`, which involves an uninfected
+    state); such terms must be reassigned with an explicit `transmission`.
 
-Different choices of what counts as a transmission give different next-generation matrices
-and different values of `R₀`, but they all share the threshold property `R₀ > 1` if and
-only if the infection-free steady state is unstable (Diekmann et al. 2010, section 2).
+The strategy used and the resulting `F` and `G` are stored in the result (see
+[`transmission_method`](@ref)) and shown when it is printed. Different choices of what
+counts as a transmission give different next-generation matrices and different values of
+`R₀`, but they all share the threshold property `R₀ > 1` if and only if the
+infection-free steady state is unstable (Diekmann et al. 2010, section 3.1 and appendix A).
 """
 function next_generation_matrix(sys::AbstractSystem, infected;
-        equilibrium = nothing, transmission = nothing)
+        equilibrium = nothing, transmission = :auto, warn::Bool = true)
     sub = infected_subsystem(sys, infected)
     x, y = sub.infected, sub.uninfected
     eq = _equilibrium(sys, infected, equilibrium, x, y)
-    F, G = _split(sub.f_infected, x, y, transmission)
+    (F, G), method = _split(sub.f_infected, x, y, transmission)
     T, Σ = linearise(F, G, x, eq)
-    return assemble(x, y, eq, T, Σ)
+    warn && _warn_negative_transmissions(T, x, F)
+    return assemble(x, y, eq, T, Σ; F, G, method)
+end
+
+function _warn_negative_transmissions(T::AbstractMatrix{Num}, x, F = Num[])
+    # term level: a manifestly negative term classified as a transmission
+    for (i, f) in enumerate(F), term in additive_terms(f)
+        if manifestly_negative(term)
+            @warn "the term $(term) removes individuals from $(x[i]) but was classified as a " *
+                  "transmission, so T is not non-negative. Reassign it with the `transmission` " *
+                  "keyword (see the documentation on choosing transmissions)."
+        end
+    end
+    # entry level: catches negative linearised entries not visible term by term
+    for j in axes(T, 2), i in axes(T, 1)
+        if manifestly_negative(T[i, j])
+            @warn "T[$(i), $(j)] = $(T[i, j]) is negative: a term that removes individuals from " *
+                  "$(x[i]) was classified as a transmission. Reassign it with the `transmission` " *
+                  "keyword (see the documentation on choosing transmissions)."
+        end
+    end
 end
 
 function _equilibrium(sys, infected, equilibrium, x, y)
@@ -106,17 +142,23 @@ function _equilibrium(sys, infected, equilibrium, x, y)
 end
 
 function _split(f, x, y, transmission)
-    if transmission === nothing
-        return split_terms(f, term -> default_is_transmission(term, x, y))
+    if transmission === nothing || transmission === :auto
+        return split_terms(f, term -> default_is_transmission(term, x, y)), :auto
+    elseif transmission === :uninfected_dependence
+        return split_terms(f, term -> depends_on_uninfected(term, y)), transmission
+    elseif transmission === :nonlinear_in_infected
+        return split_terms(f, term -> nonlinear_in_infected(term, x)), transmission
+    elseif transmission isa Symbol
+        throw(ArgumentError("unknown transmission strategy `$(repr(transmission))`; use one of $(TERM_STRATEGIES), a predicate, or a vector of new-infection rates"))
     elseif transmission isa Function
-        return split_terms(f, transmission)
+        return split_terms(f, transmission), :predicate
     elseif transmission isa AbstractVector
         length(transmission) == length(f) ||
             throw(ArgumentError("`transmission` must give one new-infection rate per infected state ($(length(f)))"))
         F = Num.(transmission)
-        return F, f .- F
+        return (F, f .- F), :explicit
     else
-        throw(ArgumentError("`transmission` must be `nothing`, a predicate on terms, or a vector of new-infection rates"))
+        throw(ArgumentError("`transmission` must be a strategy name, a predicate on terms, or a vector of new-infection rates"))
     end
 end
 
@@ -125,14 +167,22 @@ $(TYPEDSIGNATURES)
 
 Construct a [`NextGenerationMatrix`](@ref) directly from a transmission matrix `T` and a
 transition matrix `Σ` (or, equivalently, van den Driessche & Watmough's `F` and `V` with
-`Σ = -V`). `infected` names the rows/columns, as symbolic variables or `Symbol`s.
+`Σ = -V`). `infected` names the rows/columns, as symbolic variables or `Symbol`s. For
+numeric matrices the sign conventions are checked with [`validate_decomposition`](@ref)
+and a warning is issued if they fail (`check = false` disables this).
 """
 function next_generation_matrix(T::AbstractMatrix, Σ::AbstractMatrix;
-        infected = [Symbolics.variable(:x, i) for i in 1:size(T, 1)])
+        infected = [Symbolics.variable(:x, i) for i in 1:size(T, 1)], check::Bool = true)
     x = Num[v isa Symbol ? Symbolics.variable(v) : Num(v) for v in infected]
     symbolic = !(_isnumeric(T) && _isnumeric(Σ))
-    return assemble(x, Num[], Dict{Num, Any}(v => 0 for v in x), _promote(T, symbolic),
-        _promote(Σ, symbolic))
+    ngm = assemble(x, Num[], Dict{Num, Any}(v => 0 for v in x), _promote(T, symbolic),
+        _promote(Σ, symbolic); method = :matrices)
+    if check && !symbolic && !validate_decomposition(ngm)
+        @warn "T and Σ violate the sign conventions of a next-generation matrix decomposition " *
+              "(T ≥ 0, Σ with non-negative off-diagonal and non-positive diagonal entries, -Σ⁻¹ ≥ 0); " *
+              "the spectral radius of K need not be R₀"
+    end
+    return ngm
 end
 # `Num <: Real`, so a symbolic matrix must be recognised before the numeric fallback.
 function _isnumeric(A::AbstractMatrix)
@@ -141,33 +191,89 @@ end
 _promote(A, symbolic::Bool) = symbolic ? Matrix{Num}(Num.(A)) : Matrix{Float64}(A)
 
 """
+    next_generation_matrix(F, V, x₀, p; infected = ..., check = true)
+
+Numeric construction for models that are not written symbolically, following van den
+Driessche & Watmough (2002): `F(x, p)` returns the vector of new-infection rates into the
+infected compartments and `V(x, p)` the net outflow (`𝒱⁻ - 𝒱⁺`), so that the infected
+subsystem is `ẋ = F(x, p) - V(x, p)`. Both are differentiated with ForwardDiff at the
+infection-free state `x₀` (normally zeros), giving `T = ∂F/∂x` and `Σ = -∂V/∂x`. The
+uninfected state enters through `p` or through closures.
+"""
+function next_generation_matrix(F::Function, V::Function, x₀::AbstractVector, p;
+        infected = [Symbolics.variable(:x, i) for i in eachindex(x₀)], check::Bool = true)
+    T = ForwardDiff.jacobian(x -> F(x, p), x₀)
+    Σ = -ForwardDiff.jacobian(x -> V(x, p), x₀)
+    ngm = next_generation_matrix(T, Σ; infected, check = false)
+    ngm = assemble(ngm.infected, Num[], ngm.equilibrium, ngm.T, ngm.Σ; method = :functions)
+    check && !validate_decomposition(ngm) &&
+        @warn "F and V violate the sign conventions of a next-generation matrix decomposition"
+    return ngm
+end
+
+"""
 $(TYPEDSIGNATURES)
 
 The next-generation matrix with small domain `K_S = -R Σ⁻¹ C` obtained from a rank
-factorisation `T = C R` (Diekmann et al. 2010, section 2.3). When `T` has rank one, so
-that all states-at-infection are entered in fixed proportions, `K_S` is a scalar equal to
-`R₀`. Only the rank-one factorisation is attempted; if `T` is not rank one, `K` itself is
-returned.
+factorisation `T = C R` (Diekmann et al. 2010, section 3.3, equation 2.13). `R` holds a
+maximal set of linearly independent rows of `T` and `C = T Rᵀ (R Rᵀ)⁻¹`, so `K_S` is
+`r × r` with `r = rank T` and has the same non-zero eigenvalues as `K`. When the
+states-at-infection are entered in fixed proportions (`r = 1`) it is the scalar `R₀`.
 """
 function small_domain_matrix(ngm::NextGenerationMatrix)
     T = ngm.T
-    n = size(T, 1)
-    nz = [i for i in 1:n if !all(_structural_zero, T[i, :])]
-    isempty(nz) && return ngm.K
-    Rrow = T[first(nz), :]
-    j = findfirst(x -> !_structural_zero(x), Rrow)
-    Cvec = [zero(eltype(T)) for _ in 1:n]
-    for i in nz
-        c = T[i, j] / Rrow[j]
-        all(k -> _iszero_like(T[i, k] - c * Rrow[k]), 1:n) || return ngm.K
-        Cvec[i] = c
-    end
-    return _small(reshape(Rrow, 1, n), ngm.Σ, reshape(Cvec, n, 1))
+    basis = _independent_rows(T)
+    (isempty(basis) || length(basis) == size(T, 1)) && return ngm.K
+    Rm = T[basis, :]
+    C = _factor_columns(T, Rm)
+    return _small(Rm, ngm.Σ, C)
 end
-_iszero_like(x::Num) = symbolic_iszero(x)
-_iszero_like(x::Number) = isapprox(x, 0; atol = 1e-12)
+
+# Greedy selection of a maximal set of linearly independent rows.
+function _independent_rows(T::AbstractMatrix)
+    basis = Int[]
+    for i in axes(T, 1)
+        all(_structural_zero, T[i, :]) && continue
+        candidate = vcat(basis, i)
+        _full_row_rank(T[candidate, :]) && push!(basis, i)
+    end
+    return basis
+end
+function _full_row_rank(A::AbstractMatrix{Num})
+    r, n = size(A)
+    r > n && return false
+    # some r×r minor must be non-zero
+    for cols in _combinations(n, r)
+        symbolic_iszero(det(A[:, cols])) || return true
+    end
+    return false
+end
+_full_row_rank(A::AbstractMatrix{<:Real}) = rank(A) == size(A, 1)
+function _combinations(n, r)
+    r == 0 && return [Int[]]
+    out = Vector{Vector{Int}}()
+    for c in _combinations(n, r - 1)
+        start = isempty(c) ? 1 : c[end] + 1
+        for j in start:n
+            push!(out, vcat(c, j))
+        end
+    end
+    return out
+end
+_factor_columns(T::AbstractMatrix{Num}, Rm) = tidy(T * Rm' * inv(Rm * Rm'))
+_factor_columns(T::AbstractMatrix{<:Real}, Rm) = T * Rm' / (Rm * Rm')
 _small(Rm::AbstractMatrix{Num}, Σ, C) = tidy(-Rm * inv(Σ) * C)
 _small(Rm::AbstractMatrix{<:Real}, Σ, C) = -(Rm / Σ) * C
+
+"""
+$(TYPEDSIGNATURES)
+
+The matrix `-Σ⁻¹` of expected sojourn times: entry `(i, j)` is the expected time an
+individual now in infected state `j` will spend in state `i` over its remaining infected
+life (Diekmann et al. 2010, section 3.1).
+"""
+mean_sojourn_times(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}}) = tidy(-inv(ngm.Σ))
+mean_sojourn_times(ngm::NextGenerationMatrix{<:AbstractMatrix{<:Real}}) = -inv(ngm.Σ)
 
 """
     reaction_is_transmission(k, infected_indices, netstoich)

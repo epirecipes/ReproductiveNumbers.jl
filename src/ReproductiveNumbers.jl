@@ -19,6 +19,9 @@ module ReproductiveNumbers
 
 using DocStringExtensions
 using LinearAlgebra
+using Random: Xoshiro
+using ForwardDiff
+using SciMLBase: AbstractTimeseriesSolution
 using Symbolics
 using Symbolics: Num, unwrap, wrap, get_variables, jacobian, substitute
 using SymbolicUtils
@@ -32,10 +35,13 @@ using SymbolicIndexingInterface: is_parameter, is_variable, getp, getu, symbolic
 
 export NextGenerationMatrix, NoClosedFormError
 export next_generation_matrix, basic_reproduction_number, type_reproduction_number
+export effective_reproduction_number
 export disease_free_equilibrium, transmission_transition_matrices, infected_subsystem
-export spectral_radius, characteristic_polynomial, irreducible_blocks
+export suggest_infected, mean_sojourn_times
+export spectral_radius, characteristic_polynomial, irreducible_blocks, perron_vectors
+export sensitivities, elasticities
 export states_at_infection, infected_states, small_domain_matrix, evaluate,
-       validate_decomposition
+       validate_decomposition, transmission_method
 export symbolic_isequal, reaction_is_transmission
 
 include("utils.jl")
@@ -44,5 +50,6 @@ include("decomposition.jl")
 include("ngm.jl")
 include("spectral.jl")
 include("r0.jl")
+include("analysis.jl")
 
 end

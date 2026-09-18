@@ -14,19 +14,31 @@ ReproductiveNumbers
 next_generation_matrix
 NextGenerationMatrix
 transmission_transition_matrices
+transmission_method
 states_at_infection
 infected_states
 small_domain_matrix
+mean_sojourn_times
 evaluate
 validate_decomposition
+suggest_infected
 ```
 
 ## Reproduction numbers
 
 ```@docs
 basic_reproduction_number
+effective_reproduction_number
 type_reproduction_number
 NoClosedFormError
+```
+
+## Sensitivity and structure of the next-generation matrix
+
+```@docs
+sensitivities
+elasticities
+perron_vectors
 ```
 
 ## The infected subsystem
@@ -35,6 +47,8 @@ NoClosedFormError
 infected_subsystem
 disease_free_equilibrium
 default_is_transmission
+depends_on_uninfected
+nonlinear_in_infected
 split_terms
 linearise
 ode_right_hand_sides
@@ -61,6 +75,7 @@ tidy
 additive_terms
 symbolic_variables
 depends_on
+manifestly_negative
 to_number
 substitution_map
 ```
@@ -76,3 +91,9 @@ overrides.
 ```@docs
 reaction_is_transmission
 ```
+
+## Latexify extension
+
+Loading Latexify adds `latexify(ngm)` and a `text/latex` `show` method, so a
+[`NextGenerationMatrix`](@ref) renders as an aligned display of `T`, `Σ`, `K` and `R₀`
+in notebooks and Quarto documents.

@@ -63,9 +63,12 @@ function resolve_states(sys::AbstractSystem, states::AbstractVector, infected)
         if x isa Symbol
             # match on the (un-namespaced) name so that both complete and incomplete
             # systems, and systems converted from Catalyst, are handled alike
-            i = findfirst(s -> _basename(s) == x, states)
-            i === nothing &&
+            matches = findall(s -> _basename(s) == x, states)
+            isempty(matches) &&
                 throw(ArgumentError("no unknown of `$(nameof(sys))` is named `$(x)`; unknowns are $(states)"))
+            length(matches) > 1 &&
+                throw(ArgumentError("the name `$(x)` is ambiguous in `$(nameof(sys))`: it matches $(states[matches]); pass the symbolic variable instead"))
+            i = matches[1]
         else
             i = _findsym(Num(x), states)
             i === nothing &&
@@ -125,12 +128,11 @@ function disease_free_equilibrium(sys::AbstractSystem, infected)
     sol = try
         Symbolics.symbolic_linear_solve(g .~ 0, y)
     catch err
-        throw(ArgumentError("could not solve for the infection-free steady state of `$(nameof(sys))` " *
-                            "symbolically ($(sprint(showerror, err))); pass it explicitly with `equilibrium = Dict(...)`"))
+        nothing
     end
-    sol === nothing &&
-        throw(ArgumentError("could not solve for the infection-free steady state of `$(nameof(sys))`; " *
-                            "pass it explicitly with `equilibrium = Dict(...)`"))
+    if sol === nothing
+        return _polynomial_equilibrium(sys, g, y, zero_inf)
+    end
     sol = sol isa AbstractVector ? sol : [sol]
     eq = copy(zero_inf)
     for (v, s) in zip(y, sol)
@@ -143,19 +145,67 @@ function disease_free_equilibrium(sys::AbstractSystem, infected)
     return eq
 end
 
+# Fallback for uninfected subsystems that are polynomial but not linear in the uninfected
+# states (logistic host growth, say): solve with `Symbolics.symbolic_solve`, which needs
+# Nemo to be loaded, and keep the candidate steady states with all uninfected states
+# non-zero. Exactly one such candidate is accepted.
+function _polynomial_equilibrium(sys, g, y, zero_inf)
+    hint = "pass it explicitly with `equilibrium = Dict(...)`; polynomial steady states can be " *
+           "found automatically when Nemo (and, for several coupled unknowns, Groebner) is loaded"
+    sols = try
+        length(y) == 1 ? [Dict(y[1] => r) for r in Symbolics.symbolic_solve(g[1], y[1])] :
+        Symbolics.symbolic_solve(g, y)
+    catch err
+        throw(ArgumentError("could not solve for the infection-free steady state of `$(nameof(sys))` " *
+                            "symbolically ($(sprint(showerror, err))); $(hint)"))
+    end
+    (sols === nothing || isempty(sols)) &&
+        throw(ArgumentError("no infection-free steady state of `$(nameof(sys))` was found; $(hint)"))
+    candidates = Dict{Num, Any}[]
+    for sol in sols
+        sol isa AbstractDict || continue
+        vals = [tidy(Num(get(sol, v, v))) for v in y]
+        any(v -> _structural_zero(v) || depends_on(v, y), vals) && continue
+        push!(candidates, merge(zero_inf, Dict{Num, Any}(zip(y, vals))))
+    end
+    length(candidates) == 1 && return candidates[1]
+    isempty(candidates) &&
+        throw(ArgumentError("every infection-free steady state of `$(nameof(sys))` has a vanishing uninfected compartment; $(hint)"))
+    throw(ArgumentError("`$(nameof(sys))` has several infection-free steady states: $(candidates); $(hint)"))
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+`true` if the additive term depends on an uninfected state, for example `β S I / N`. This
+is the `:uninfected_dependence` strategy of [`next_generation_matrix`](@ref).
+"""
+depends_on_uninfected(term, uninfected) = depends_on(term, uninfected)
+
+"""
+$(TYPEDSIGNATURES)
+
+`true` if the additive term is non-linear in the infected states, for example
+`β (N - I) I / N` after `S` has been eliminated. This is the `:nonlinear_in_infected`
+strategy of [`next_generation_matrix`](@ref).
+"""
+function nonlinear_in_infected(term, infected)
+    depends_on(term, infected) || return false
+    H = jacobian(jacobian([term], infected)[1, :], infected)
+    return !all(x -> symbolic_iszero(x; numeric = false), H)
+end
+
 """
 $(TYPEDSIGNATURES)
 
 Default classification of an additive term of an infected equation as a transmission
-(new-infection) term: it depends on an uninfected state (for example `β S I / N`), or it
-is non-linear in the infected states (for example `β (N - I) I / N` after `S` has been
-eliminated). Linear terms in the infected states alone (`σ E`, `-γ I`) are transitions.
+(new-infection) term: [`depends_on_uninfected`](@ref) or [`nonlinear_in_infected`](@ref).
+Linear terms in the infected states alone (`σ E`, `-γ I`, `p μ I`) are transitions, so
+vertical transmission written as an ODE term is *not* recognised; write such models as
+reaction networks or give the transmission terms explicitly.
 """
 function default_is_transmission(term, infected, uninfected)
-    depends_on(term, uninfected) && return true
-    depends_on(term, infected) || return false
-    H = jacobian(jacobian([term], infected)[1, :], infected)
-    return !all(x -> symbolic_iszero(x; numeric = false), H)
+    return depends_on_uninfected(term, uninfected) || nonlinear_in_infected(term, infected)
 end
 
 """

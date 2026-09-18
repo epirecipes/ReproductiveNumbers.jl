@@ -87,5 +87,24 @@ square of the two-generation version.
 ## Sanity checks
 
 Whatever the choice, `T` must be non-negative and `Σ` must have non-negative off-diagonal
-and non-positive diagonal entries. [`validate_decomposition`](@ref) checks this at given
-parameter values; the regression tests use it together with the threshold property.
+and non-positive diagonal entries. Terms that *remove* individuals from an infected
+compartment but involve an uninfected state (density-dependent death `-d (S + I) I`, say)
+are misfiled by the default rule; the package warns when a transmission term or an entry
+of `T` is manifestly negative:
+
+```@example transmissions
+@parameters d
+dd = complete(System([D(S) ~ -β * S * I / N,
+                      D(I) ~ β * S * I / N - γ * I - d * (S + I) * I], t; name = :dd))
+ngm_dd = next_generation_matrix(dd, [I]; equilibrium = Dict(S => N),
+                                transmission = [β * S * I / N])
+basic_reproduction_number(ngm_dd)
+```
+
+[`validate_decomposition`](@ref) checks the sign conventions at given parameter values;
+the regression tests use it together with the threshold property. Finally,
+[`suggest_infected`](@ref) proposes the infected compartments when you are unsure:
+
+```@example transmissions
+suggest_infected(dd)
+```

@@ -1,4 +1,5 @@
 import ReproductiveNumbersProofs.Restriction
 import ReproductiveNumbersProofs.RankOne
+import ReproductiveNumbersProofs.BlockTriangular
 import ReproductiveNumbersProofs.TwoByTwo
 import ReproductiveNumbersProofs.Examples

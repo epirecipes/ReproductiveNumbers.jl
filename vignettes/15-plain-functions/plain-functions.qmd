@@ -1,0 +1,94 @@
+---
+title: "15. Models as plain Julia functions, and leaky versus all-or-nothing vaccines"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+Not every model is written with ModelingToolkit. The constructor
+`next_generation_matrix(F, V, x₀, p)` accepts van den Driessche and Watmough's `𝓕` and
+`𝒱` as ordinary Julia functions of the infected-state vector and differentiates them with
+ForwardDiff at the infection-free state. This vignette uses it for an SEIR model with two
+kinds of vaccine, *leaky* (every vaccinated person is partially protected) and
+*all-or-nothing* (a fraction is fully protected), and compares the closed forms obtained
+symbolically.
+
+## Plain functions
+
+```{julia}
+using ReproductiveNumbers, LinearAlgebra
+
+# infected states x = (E, I); the uninfected state enters through p
+F(x, p) = [p.β * p.S₀ * x[2] / p.N, 0.0]
+V(x, p) = [(p.σ + p.μ) * x[1], -p.σ * x[1] + (p.γ + p.μ) * x[2]]
+p = (β = 0.5, σ = 0.25, γ = 0.2, μ = 0.01, N = 1000.0, S₀ = 1000.0)
+ngm = next_generation_matrix(F, V, zeros(2), p; infected = [:E, :I])
+```
+
+```{julia}
+basic_reproduction_number(ngm)
+```
+
+The sign conventions are checked automatically; a mistake such as putting a transition
+into `F` with the wrong sign is reported:
+
+```{julia}
+Vbad(x, p) = [-(p.σ + p.μ) * x[1], (p.γ + p.μ) * x[2]]
+ngm_bad = next_generation_matrix(F, Vbad, zeros(2), p)
+validate_decomposition(ngm_bad)
+```
+
+## Leaky versus all-or-nothing vaccination, symbolically
+
+With ModelingToolkit we can compare the two vaccine models in closed form. A fraction `v` of
+the population is vaccinated. With an all-or-nothing vaccine of efficacy `ε`, a fraction
+`ε v` is fully protected and the rest is fully susceptible. With a leaky vaccine every
+vaccinated person has susceptibility reduced by the factor `1 - ε`.
+
+```{julia}
+using ModelingToolkit, Symbolics
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+@parameters β σ γ μ N v ε
+@variables S(t) Sᵥ(t) E(t) I(t) R(t)
+λ = β * I / N
+# all-or-nothing: the protected fraction never enters the model's susceptible pool
+aon = complete(System([D(S) ~ -λ * S, D(E) ~ λ * S - σ * E, D(I) ~ σ * E - γ * I, D(R) ~ γ * I], t; name = :aon))
+ngm_aon = next_generation_matrix(aon, [E, I]; equilibrium = Dict(S => (1 - ε * v) * N, R => 0))
+R_aon = basic_reproduction_number(ngm_aon)
+```
+
+```{julia}
+# leaky: vaccinated susceptibles Sᵥ are infected at rate (1 - ε) λ
+leaky = complete(System([D(S) ~ -λ * S, D(Sᵥ) ~ -(1 - ε) * λ * Sᵥ,
+                         D(E) ~ λ * S + (1 - ε) * λ * Sᵥ - σ * E,
+                         D(I) ~ σ * E - γ * I, D(R) ~ γ * I], t; name = :leaky))
+ngm_leaky = next_generation_matrix(leaky, [E, I]; equilibrium = Dict(S => (1 - v) * N, Sᵥ => v * N, R => 0))
+R_leaky = basic_reproduction_number(ngm_leaky)
+```
+
+Both reduce `R₀` by the same factor `1 - ε v`:
+
+```{julia}
+symbolic_isequal(R_aon, R_leaky)
+```
+
+so the critical vaccination coverage is `v* = (1 - 1/R₀)/ε` for both:
+
+```{julia}
+R0 = β / γ
+vstar = (1 - 1 / R0) / ε
+symbolic_isequal(substitute(R_aon, Dict(v => vstar)), 1)
+```
+
+The two vaccines differ in the *endemic* equilibrium and in the final size, not in the
+threshold; those differences appear once the vaccinated class is depleted differently, which
+is a question about the non-linear model rather than about `R₀`.
+
+## Sensitivity of the critical coverage
+
+```{julia}
+sensitivities(vstar, [β, γ, ε])
+```

@@ -7,7 +7,7 @@ import Mathlib.Tactic
 # The spectral radius of a non-negative `2 × 2` matrix
 
 Next-generation matrices with two states-at-infection are ubiquitous: two host types
-(Example 2.2), vector–host transmission, or heterosexual transmission (Example 4.1) in
+(section 2.2), vector–host transmission, or heterosexual transmission (section 4.1) in
 Diekmann, Heesterbeek and Roberts (2010).  For such a matrix
 `K = !![a, b; c, d]` with non-negative entries the paper's equation (2.12) gives
 

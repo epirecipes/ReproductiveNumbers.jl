@@ -1,12 +1,13 @@
 import Mathlib.LinearAlgebra.Matrix.Trace
 import Mathlib.Data.Matrix.Mul
+import Mathlib.LinearAlgebra.Matrix.Notation
 import Mathlib.Tactic
 
 /-!
 # Rank-one next-generation matrices
 
 When all states-at-infection are entered in fixed proportions (for instance an SEI model with
-two latent categories entered with probabilities `p` and `1 - p`, Example 2.1 of Diekmann,
+two latent categories entered with probabilities `p` and `1 - p`, section 2.1 of Diekmann,
 Heesterbeek and Roberts 2010), the next-generation matrix `K` has rank one and `det K = 0`.
 Diekmann et al. then reduce to the *small domain* matrix `K_S` which is a scalar equal to the
 trace of `K`.
@@ -62,5 +63,40 @@ theorem minors_vecMulVec (u v : n → R) (i j k l : n) :
     (vecMulVec u v) i k * (vecMulVec u v) j l - (vecMulVec u v) i l * (vecMulVec u v) j k = 0 := by
   simp only [Matrix.vecMulVec_apply]
   ring
+
+/-- Converse for `2 × 2` matrices: a vanishing determinant (the single `2 × 2` minor)
+forces the rank-one form `u vᵀ`. Together with `eigenvalue_vecMulVec` this justifies the
+software's test "all `2 × 2` minors vanish ⇒ `R₀ = trace K`" for `2 × 2` blocks. -/
+theorem rank_one_of_det_eq_zero_fin_two (a b c d : ℝ) (h : a * d - b * c = 0) :
+    ∃ u v : Fin 2 → ℝ, !![a, b; c, d] = vecMulVec u v := by
+  by_cases ha : a = 0
+  · subst ha
+    have hbc : b * c = 0 := by linarith
+    rcases mul_eq_zero.mp hbc with hb | hc
+    · subst hb
+      refine ⟨![0, 1], ![c, d], ?_⟩
+      ext i j
+      fin_cases i <;> fin_cases j <;> simp [Matrix.vecMulVec_apply]
+    · subst hc
+      refine ⟨![b, d], ![0, 1], ?_⟩
+      ext i j
+      fin_cases i <;> fin_cases j <;> simp [Matrix.vecMulVec_apply]
+  · refine ⟨![a, c], ![1, b / a], ?_⟩
+    ext i j
+    fin_cases i <;> fin_cases j <;> simp [Matrix.vecMulVec_apply]
+    · field_simp
+    · field_simp
+      linear_combination h
+
+/-- Every eigenvalue of a singular `2 × 2` matrix is `0` or its trace `a + d`. -/
+theorem eigenvalue_fin_two_of_det_eq_zero (a b c d : ℝ) (h : a * d - b * c = 0) {μ : ℝ}
+    {x : Fin 2 → ℝ} (hx : x ≠ 0) (hμ : !![a, b; c, d] *ᵥ x = μ • x) :
+    μ = 0 ∨ μ = a + d := by
+  obtain ⟨u, v, huv⟩ := rank_one_of_det_eq_zero_fin_two a b c d h
+  rw [huv] at hμ
+  rcases eigenvalue_vecMulVec u v hx hμ with h0 | htr
+  · exact Or.inl h0
+  · right
+    rw [htr, ← huv, Matrix.trace_fin_two_of]
 
 end ReproductiveNumbersProofs

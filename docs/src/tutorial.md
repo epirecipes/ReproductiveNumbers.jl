@@ -154,6 +154,31 @@ vals[γ₃] = 0.2
 basic_reproduction_number(ngm_age, vals)
 ```
 
+## Sensitivities, sojourn times and the effective reproduction number
+
+The closed form can be differentiated with respect to every parameter:
+
+```@example tutorial
+elasticities(ngm)
+```
+
+`-Σ⁻¹` holds the expected times spent in each infected state:
+
+```@example tutorial
+mean_sojourn_times(ngm)
+```
+
+Leaving the uninfected states symbolic gives a reproduction number at any state, which
+can then be evaluated along a simulated trajectory:
+
+```@example tutorial
+using OrdinaryDiffEqTsit5
+ngm_t = next_generation_matrix(seir, [E, I]; equilibrium = Dict())
+prob = ODEProblem(seir, [S => 999.0, E => 0.0, I => 1.0, R => 0.0, p...], (0.0, 120.0))
+sol = solve(prob, Tsit5(); saveat = 30.0)
+effective_reproduction_number(ngm_t, sol)
+```
+
 ## Building from `T` and `Σ` directly
 
 If you already have the matrices (from a paper, say), skip the model:

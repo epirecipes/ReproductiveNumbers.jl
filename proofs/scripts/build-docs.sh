@@ -13,7 +13,7 @@ lake exe mdgen ReproductiveNumbersProofs docs/generated
 COMBINED="docs/generated/ReproductiveNumbersProofs.md"
 {
   cat docs/preamble.md
-  for f in Restriction RankOne TwoByTwo Examples; do
+  for f in Restriction RankOne BlockTriangular TwoByTwo Examples; do
     printf '\n\n'
     cat "docs/generated/${f}.md"
   done

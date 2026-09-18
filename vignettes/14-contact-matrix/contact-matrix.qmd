@@ -1,0 +1,126 @@
+---
+title: "14. Age-structured transmission with a contact matrix"
+subtitle: "ReproductiveNumbers.jl vignettes"
+author: "Simon D. W. Frost"
+date: today
+---
+
+## Overview
+
+Age-structured models use a contact matrix `C`, with `C[i, j]` the daily number of contacts
+an individual in group `i` has with group `j`, and a per-contact transmission probability
+`q`. With `n` groups the next-generation matrix is `n × n` and irreducible, so there is no
+closed form beyond `n = 2`; everything is numeric. This vignette builds a six-group SEIR
+model with a synthetic but realistically shaped contact matrix (assortative mixing with a
+school-age peak), computes `R₀`, the Perron vector (which age groups the growing epidemic
+concentrates in), the reproductive values, elasticities with respect to each contact
+block, and the effect of vaccinating one age group.
+
+## The model
+
+```{julia}
+using ReproductiveNumbers, ModelingToolkit, Symbolics, LinearAlgebra
+using ModelingToolkit: t_nounits as t, D_nounits as D
+
+n = 6
+groups = ["0-4", "5-14", "15-24", "25-44", "45-64", "65+"]
+@parameters q σ γ C[1:n, 1:n] N[1:n]
+@variables S(t)[1:n] E(t)[1:n] I(t)[1:n] R(t)[1:n]
+Cm, Nv, Sv, Ev, Iv, Rv = collect(C), collect(N), collect(S), collect(E), collect(I), collect(R)
+λ = [q * sum(Cm[i, j] * Iv[j] / Nv[j] for j in 1:n) for i in 1:n]
+eqs = vcat([D(Sv[i]) ~ -λ[i] * Sv[i] for i in 1:n],
+           [D(Ev[i]) ~ λ[i] * Sv[i] - σ * Ev[i] for i in 1:n],
+           [D(Iv[i]) ~ σ * Ev[i] - γ * Iv[i] for i in 1:n],
+           [D(Rv[i]) ~ γ * Iv[i] for i in 1:n])
+age = complete(System(eqs, t; name = :age))
+ngm = next_generation_matrix(age, vcat(Ev, Iv); equilibrium = Dict(Sv[i] => Nv[i] for i in 1:n))
+size(ngm.K), length(states_at_infection(ngm))
+```
+
+Symbolically, `K[i, j] = q C[i, j] (Nᵢ/Nⱼ) / γ` (the exposed states are the
+states-at-infection; the `σ` cancels because everyone exposed becomes infectious):
+
+```{julia}
+ngm.K[1, 2]
+```
+
+## Numbers
+
+```{julia}
+contacts = [ 7.0 3.0 1.5 3.0 1.0 0.5;
+             2.5 12.0 3.0 3.5 1.5 0.5;
+             1.0 2.5 9.0 4.0 2.0 0.5;
+             1.5 2.0 3.0 7.0 3.0 1.0;
+             0.5 1.0 1.5 3.0 5.0 1.5;
+             0.3 0.4 0.5 1.5 2.0 3.0 ]
+sizes = [280.0, 600.0, 640.0, 1400.0, 1300.0, 900.0]   # thousands
+vals = Dict{Any, Any}(Cm[i, j] => contacts[i, j] for i in 1:n, j in 1:n)
+for i in 1:n
+    vals[Nv[i]] = sizes[i]
+end
+vals[q] = 0.05
+vals[σ] = 0.25
+vals[γ] = 0.2
+num = evaluate(ngm, vals)
+R0 = basic_reproduction_number(num)
+```
+
+The same number from the reciprocity-corrected contact matrix directly:
+
+```{julia}
+Kdirect = [0.05 * contacts[i, j] * sizes[i] / sizes[j] / 0.2 for i in 1:n, j in 1:n]
+maximum(abs, eigvals(Kdirect))
+```
+
+## Who drives transmission?
+
+The right Perron vector `u` is the age distribution of new infections in the exponential
+phase; the left vector `v` holds reproductive values, the relative contribution of an
+infection in each group to future growth:
+
+```{julia}
+u, v = perron_vectors(num)
+[groups round.(u; digits = 3) round.(v; digits = 3)]
+```
+
+Elasticities of `R₀` with respect to each contact block, aggregated by the group making the
+contact, show where interventions have leverage. Because the closed form does not exist we
+differentiate numerically through the numeric eigenvalue with finite differences:
+
+```{julia}
+function elasticity_numeric(vals, θ; h = 1e-6)
+    v₊ = copy(vals); v₊[θ] = vals[θ] * (1 + h)
+    v₋ = copy(vals); v₋[θ] = vals[θ] * (1 - h)
+    (basic_reproduction_number(ngm, v₊) - basic_reproduction_number(ngm, v₋)) / (2h * R0)
+end
+by_group = [sum(elasticity_numeric(vals, Cm[i, j]) for j in 1:n) for i in 1:n]
+[groups round.(by_group; digits = 3)]
+```
+
+## Vaccinating one group
+
+Vaccinating a fraction `vᵢ` of group `i` (all-or-nothing protection) removes that fraction
+of `Sᵢ` from the infection-free state, scaling row `i` of `K` by `1 - vᵢ`. The type
+reproduction number of group `i` tells us whether vaccinating that group alone can bring
+`R₀` below one, and what coverage is needed:
+
+```{julia}
+Tg = [try type_reproduction_number(num, i) catch; NaN end for i in 1:n]
+[groups round.(Tg; digits = 2) round.(1 .- 1 ./ Tg; digits = 2)]
+```
+
+Groups with `NaN` cannot be targeted alone: the rest of the population sustains
+transmission without them. For a group that can, the critical coverage `1 - 1/Tᵢ` brings
+`R₀` to exactly one:
+
+```{julia}
+i = findfirst(x -> !isnan(x) && x > 1, Tg)
+if i !== nothing
+    vals_v = copy(vals)
+    @parameters v
+    ngm_v = next_generation_matrix(age, vcat(Ev, Iv);
+                                   equilibrium = merge(Dict(Sv[k] => Nv[k] for k in 1:n), Dict(Sv[i] => (1 - v) * Nv[i])))
+    vals_v[v] = 1 - 1 / Tg[i]
+    (groups[i], basic_reproduction_number(ngm_v, vals_v))
+end
+```

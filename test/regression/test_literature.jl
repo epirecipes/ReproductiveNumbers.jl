@@ -3,7 +3,7 @@ using ReproductiveNumbers, ModelingToolkit, Symbolics, Test
 using ModelingToolkit: t_nounits as t, D_nounits as D
 include(joinpath(@__DIR__, "..", "models.jl"))
 
-@testset "Diekmann, Heesterbeek & Roberts (2010), Example 2.1" begin
+@testset "Diekmann, Heesterbeek & Roberts (2010), section 2.1" begin
     m = two_latent_model()
     R0 = basic_reproduction_number(m.sys, [m.E₁, m.E₂, m.I])
     paper = m.ν₁ * m.β * m.p / ((m.ν₁ + m.μ) * (m.γ + m.μ)) +
@@ -11,7 +11,7 @@ include(joinpath(@__DIR__, "..", "models.jl"))
     @test symbolic_isequal(R0, paper)
 end
 
-@testset "Diekmann, Heesterbeek & Roberts (2010), Example 4.1 (two sexes)" begin
+@testset "Diekmann, Heesterbeek & Roberts (2010), section 4.1 (two sexes)" begin
     @parameters β₁ β₂ ν₁ ν₂ γ₁ γ₂ μ N₁ N₂
     @variables S₁(t) E₁(t) I₁(t) S₂(t) E₂(t) I₂(t)
     # β₁: infections of females per infectious male per unit time when all females are
