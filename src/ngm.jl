@@ -168,3 +168,14 @@ _iszero_like(x::Num) = symbolic_iszero(x)
 _iszero_like(x::Number) = isapprox(x, 0; atol = 1e-12)
 _small(Rm::AbstractMatrix{Num}, Σ, C) = tidy(-Rm * inv(Σ) * C)
 _small(Rm::AbstractMatrix{<:Real}, Σ, C) = -(Rm / Σ) * C
+
+"""
+    reaction_is_transmission(k, infected_indices, netstoich)
+
+Default classification of reaction `k` of a Catalyst `ReactionSystem` (available when
+Catalyst is loaded): `true` if the net stoichiometry of the reaction (column `k` of
+`netstoich`, rows indexed by species) increases the total number of individuals in the
+infected species `infected_indices`. `S + I --> E + I` and `I --> I + J` are
+transmissions, `E --> I` and `I --> R` are transitions.
+"""
+function reaction_is_transmission end

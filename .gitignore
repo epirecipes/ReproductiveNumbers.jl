@@ -23,3 +23,8 @@ proofs/docs/generated/
 .DS_Store
 .vscode/
 *.swp
+
+# Documenter
+/docs/build/
+/docs/src/vignettes/
+/docs/src/proofs/

@@ -34,8 +34,9 @@ export NextGenerationMatrix, NoClosedFormError
 export next_generation_matrix, basic_reproduction_number, type_reproduction_number
 export disease_free_equilibrium, transmission_transition_matrices, infected_subsystem
 export spectral_radius, characteristic_polynomial, irreducible_blocks
-export states_at_infection, small_domain_matrix, evaluate, validate_decomposition
-export symbolic_isequal
+export states_at_infection, infected_states, small_domain_matrix, evaluate,
+       validate_decomposition
+export symbolic_isequal, reaction_is_transmission
 
 include("utils.jl")
 include("types.jl")

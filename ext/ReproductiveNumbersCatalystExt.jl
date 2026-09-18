@@ -8,15 +8,9 @@ using Catalyst
 using Catalyst: ReactionSystem, Reaction, reactions, species, oderatelaw, netstoichmat
 using Symbolics: Num
 import ReproductiveNumbers: next_generation_matrix, infected_subsystem,
-                            disease_free_equilibrium
+                            disease_free_equilibrium, reaction_is_transmission
 
-"""
-    default_is_transmission(rx::Reaction, infected_indices, netstoich)
-
-A reaction is a transmission (creates new infected individuals) if its net stoichiometry
-increases the total number of individuals in the infected states.
-"""
-function _reaction_is_transmission(k::Int, infected_idx, ν)
+function ReproductiveNumbers.reaction_is_transmission(k::Int, infected_idx, ν)
     return sum(ν[i, k] for i in infected_idx; init = 0) > 0
 end
 
@@ -68,7 +62,7 @@ end
 function _transmission_flags(rxs, transmission, sp_idx, ν)
     n = length(rxs)
     if transmission === nothing
-        return [_reaction_is_transmission(k, sp_idx, ν) for k in 1:n]
+        return [reaction_is_transmission(k, sp_idx, ν) for k in 1:n]
     elseif transmission isa Function
         return [Bool(transmission(rx)) for rx in rxs]
     elseif transmission isa AbstractVector{Bool}
