@@ -28,7 +28,11 @@ function Latexify.latexify(ngm::NextGenerationMatrix; kwargs...)
     # a single line: renderers that treat the string as Markdown (Documenter) would
     # otherwise read lines beginning with `-` as list items
     body = replace(join(parts, " \\\\ "), "\n" => " ")
-    return Latexify.LaTeXString("\\begin{align*} " * body * " \\end{align*}")
+    # `aligned` (not `align*`): Documenter's KaTeX accepts it inside display math, and
+    # MathJax (Quarto, Jupyter) accepts both
+    # delimited as display math so that Markdown-based renderers (Documenter) keep the
+    # content verbatim and typeset it, and MathJax (Quarto, Jupyter) displays it
+    return Latexify.LaTeXString("\$\$\\begin{aligned} " * body * " \\end{aligned}\$\$")
 end
 
 function Base.show(io::IO, ::MIME"text/latex", ngm::NextGenerationMatrix)

@@ -161,7 +161,7 @@ end
     m = seir_demography_model()
     ngm = next_generation_matrix(m.sys, [m.E, m.I])
     s = string(latexify(ngm))
-    @test occursin("\\Sigma", s) && occursin("R_0", s) && occursin("begin{align*}", s)
+    @test occursin("\\Sigma", s) && occursin("R_0", s) && occursin("begin{aligned}", s)
     @test occursin("Sigma", sprint(show, MIME("text/latex"), ngm))
     # no closed form: R0 line is omitted
     @variables a b c d e f g h k

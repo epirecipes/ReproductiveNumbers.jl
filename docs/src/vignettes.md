@@ -11,7 +11,7 @@ quarto render
 ```
 
 | # | Vignette                                                                                           | What it shows                                                                                                                     |
-|:- |:-------------------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------------------- |
+|:-- |:-------------------------------------------------------------------------------------------------- |:--------------------------------------------------------------------------------------------------------------------------------- |
 | 1 | [The SIR model](vignettes/01-sir/sir.html)                                                         | `T`, `Σ`, `K` and `R₀ = β/γ`; numeric evaluation; the threshold by simulation; a reproduction number at any state                 |
 | 2 | [SEIR with demography](vignettes/02-seir/seir.html)                                                | Large versus restricted domain, states-at-infection, automatic infection-free steady state, characteristic polynomial             |
 | 3 | [Two latent stages](vignettes/03-two-latent-stages/two-latent-stages.html)                         | section 2.1 of Diekmann et al.: a rank-one `K` and the small-domain matrix                                                        |
