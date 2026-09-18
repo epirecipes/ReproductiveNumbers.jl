@@ -154,6 +154,37 @@ vals[γ₃] = 0.2
 basic_reproduction_number(ngm_age, vals)
 ```
 
+## Readable forms
+
+The entries of `K` are products of transmission rates, mean sojourn times and transition
+probabilities. `abbreviate` names those quantities (`τ_x` for the mean time in state `x`,
+`p_x_y` for the probability of moving from `x` to `y`) so that the matrices read the way
+one would derive them by epidemiological reasoning:
+
+```@example tutorial
+ab = abbreviate(ngm)
+```
+
+```@example tutorial
+basic_reproduction_number(ab)
+```
+
+Your own names can be used instead; each definition is solved for one parameter, which is
+eliminated:
+
+```@example tutorial
+@variables R_E p_E
+ab2 = abbreviate(ngm, [R_E => β / (γ + μ), p_E => σ / (σ + μ)])
+basic_reproduction_number(ab2)
+```
+
+`expand_definitions` substitutes the definitions back, and numeric evaluation accepts
+values for either the original parameters or the abbreviations:
+
+```@example tutorial
+(expand_definitions(ab2, basic_reproduction_number(ab2)), basic_reproduction_number(ab2, p))
+```
+
 ## Sensitivities, sojourn times and the effective reproduction number
 
 The closed form can be differentiated with respect to every parameter:

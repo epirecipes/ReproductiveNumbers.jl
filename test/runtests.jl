@@ -7,6 +7,7 @@ using SafeTestsets, Test
     @safetestset "Unit: decomposition" include("unit/test_decomposition.jl")
     @safetestset "Unit: analysis" include("unit/test_analysis.jl")
     @safetestset "Unit: routing" include("unit/test_routing.jl")
+    @safetestset "Unit: abbreviations" include("unit/test_abbreviate.jl")
     @safetestset "Integration: ModelingToolkit models" include("integration/test_modelingtoolkit.jl")
     @safetestset "Integration: Catalyst models" include("integration/test_catalyst.jl")
     @safetestset "Integration: numeric evaluation" include("integration/test_numeric.jl")

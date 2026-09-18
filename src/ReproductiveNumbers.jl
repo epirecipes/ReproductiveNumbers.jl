@@ -44,6 +44,7 @@ export sensitivities, elasticities
 export states_at_infection, infected_states, small_domain_matrix, evaluate,
        validate_decomposition, transmission_method
 export symbolic_isequal, reaction_is_transmission
+export abbreviate, expand_definitions
 
 include("utils.jl")
 include("routing.jl")
@@ -53,5 +54,6 @@ include("ngm.jl")
 include("spectral.jl")
 include("r0.jl")
 include("analysis.jl")
+include("abbreviate.jl")
 
 end

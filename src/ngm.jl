@@ -9,7 +9,8 @@ matrix `K = Eᵀ K_L E`. `F`, `G` and `method` record how the split was made (se
 [`NextGenerationMatrix`](@ref)).
 """
 function assemble(infected, uninfected, equilibrium, T::AbstractMatrix, Σ::AbstractMatrix;
-        F = Num[], G = Num[], method::Symbol = :matrices)
+        F = Num[], G = Num[], method::Symbol = :matrices,
+        definitions::AbstractDict = Dict{Num, Num}())
     n = length(infected)
     size(T) == (n, n) && size(Σ) == (n, n) ||
         throw(DimensionMismatch("T and Σ must be $(n)×$(n)"))
@@ -22,7 +23,7 @@ function assemble(infected, uninfected, equilibrium, T::AbstractMatrix, Σ::Abst
     K = _restrict(K_L, E)
     return NextGenerationMatrix(Vector{Num}(infected), Vector{Num}(uninfected),
         Dict{Num, Any}(equilibrium), T, Σ, K_L, E, K, infected[rows],
-        Vector{Num}(F), Vector{Num}(G), method)
+        Vector{Num}(F), Vector{Num}(G), method, Dict{Num, Num}(definitions))
 end
 
 _structural_zero(x::Num) = symbolic_iszero(x; numeric = false)

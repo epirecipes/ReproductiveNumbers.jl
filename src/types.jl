@@ -51,6 +51,8 @@ struct NextGenerationMatrix{M <: AbstractMatrix, E <: AbstractMatrix{Int}}
     G::Vector{Num}
     "How transmissions were identified: `:auto`, `:uninfected_dependence`, `:nonlinear_in_infected`, `:stoichiometry`, `:predicate`, `:explicit`, `:matrices` or `:functions`."
     method::Symbol
+    "Named abbreviations used in the matrices (new symbol => expression in the original parameters), see [`abbreviate`](@ref); empty unless abbreviated."
+    definitions::Dict{Num, Num}
 end
 
 """
@@ -115,4 +117,11 @@ function Base.show(io::IO, ::MIME"text/plain", ngm::NextGenerationMatrix)
     println(io)
     println(io, "  K = ")
     Base.print_matrix(io, ngm.K, "      ")
+    if !isempty(ngm.definitions)
+        println(io)
+        println(io, "  where")
+        for (k, v) in sort(collect(ngm.definitions); by = kv -> string(kv[1]))
+            println(io, "    ", k, " = ", v)
+        end
+    end
 end

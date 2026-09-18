@@ -47,6 +47,38 @@ is written in a form that makes it manifestly non-negative):
 R0 = basic_reproduction_number(ngm)
 ```
 
+## A readable form
+
+The entries of `K` are products of three kinds of quantity: transmission rates, mean sojourn
+times and transition probabilities. `abbreviate` names them (`τ_x`, `p_x_y` for the
+transition from `x` to `y`, and with `transmissions = true` also `T_y_x` for `T[y, x]`), and
+lists the definitions when the result is printed:
+
+```{julia}
+ab = abbreviate(ngm; transmissions = true)
+```
+
+The closed form then reads like the paper's derivation:
+
+```{julia}
+basic_reproduction_number(ab)
+```
+
+and can be expanded back or evaluated with the original parameter values:
+
+```{julia}
+symbolic_isequal(expand_definitions(ab, basic_reproduction_number(ab)), R0)
+```
+
+Your own quantities work too. Each definition is solved for one parameter, which is then
+eliminated from the matrices:
+
+```{julia}
+@parameters R₁ R₂
+ab2 = abbreviate(ngm, [R₁ => β₁₁ * ν₁ / ((ν₁ + μ) * (γ₁ + μ)), R₂ => β₂₂ * ν₂ / ((ν₂ + μ) * (γ₂ + μ))])
+ab2.K
+```
+
 ## Separable mixing
 
 If `β_ij = a_i b_j`, `K` has rank one and `R₀` collapses to the trace (section 2.2 of the

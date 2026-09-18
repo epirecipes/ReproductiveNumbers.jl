@@ -12,6 +12,11 @@ left any state symbolic, initial state) values are read.
 function evaluate(ngm::NextGenerationMatrix{<:AbstractMatrix{Num}}, p)
     syms = symbolic_variables([ngm.T; ngm.Σ])
     d = substitution_map(p, syms)
+    # values may be given for the original parameters rather than for the abbreviations
+    if !isempty(ngm.definitions) &&
+       Base.any(s -> !haskey(d, s) && haskey(ngm.definitions, s), syms)
+        return evaluate(expand_definitions(ngm), p)
+    end
     T = to_number.(substitute.(ngm.T, Ref(d)))
     Σ = to_number.(substitute.(ngm.Σ, Ref(d)))
     eq = Dict{Num, Any}(k => _maybe_number(substitute(Num(v), d))

@@ -34,6 +34,13 @@ type_reproduction_number
 NoClosedFormError
 ```
 
+## Readable forms
+
+```@docs
+abbreviate
+expand_definitions
+```
+
 ## Sensitivity and structure of the next-generation matrix
 
 ```@docs
