@@ -29,3 +29,4 @@ The vignettes go from simple to complex:
 | 14 | `14-contact-matrix`                | Six age groups with a contact matrix: numeric `R₀`, Perron vectors, elasticities, targeted vaccination                        |
 | 15 | `15-plain-functions`               | Models as plain Julia functions via ForwardDiff; leaky versus all-or-nothing vaccines                                         |
 | 16 | `16-effective-reproduction-number` | `R_t` in closed form, at a state, along a solution, and as an observed variable of the system                                 |
+| 17 | `17-seasonal-forcing` | Seasonally forced SIR with births and deaths: `R_t` oscillating about one on the endemic attractor, with an intervention |

@@ -1,5 +1,5 @@
 ---
-title: "17. Time-varying transmission: R_t under seasonal forcing and interventions"
+title: "17. Seasonal forcing in an open population: R_t around the endemic attractor"
 subtitle: "ReproductiveNumbers.jl vignettes"
 author: "Simon D. W. Frost"
 date: today
@@ -7,121 +7,142 @@ date: today
 
 ## Overview
 
-When the transmission rate varies in time, `β(t)`, there is no infection-free *steady*
-state and `R₀` in the sense of an autonomous model is not defined (the package refuses to
-compute it). The effective reproduction number is still well defined at every instant: it
-is the next-generation construction with the current `β(t)` and the current susceptible
-pool, `R_t = β(t) S(t) / (γ N)` for the SIR model. This vignette builds a seasonally forced
-SIR model, adds a smooth intervention that reduces transmission for a period, and follows
-`R_t` through the resulting epidemic waves.
+In a closed population a single epidemic burns through the susceptibles and `R_t` falls
+below one for good. With births and deaths the susceptible pool is replenished, the
+infection persists, and a seasonally varying transmission rate `β(t)` drives recurrent
+epidemics on an endemic attractor. There `R_t` oscillates *around one*: the phases in which
+`R_t > 1` are the growing parts of each seasonal epidemic and the phases with `R_t < 1` the
+declining parts, while the annual average is close to one because susceptibles are
+consumed and replaced at the same long-run rate.
 
-Seasonally forced models have their own basic reproduction number, defined through the
-spectral radius of a linear operator on periodic functions (Bacaër and Guernaoui 2006);
-that is a different quantity, which the package does not compute.
+The model and parameter values follow the forced SIR chapter of the
+[Epidemiological Recipes cookbook](https://epirecip.es/epicookbook/chapters/sirforced/r):
+a 70-year life expectancy, a one-week infectious period, an annual sinusoidal forcing of
+amplitude 5 %, and a population of 100 000. Time is measured in days.
 
-## A seasonally forced SIR model
+There is no infection-free *steady* state when `β` varies in time, so `R₀` of the forced
+model is not defined through this package's construction (seasonally forced models have
+their own `R₀`, defined through a linear operator on periodic functions, Bacaër and
+Guernaoui 2006). The effective reproduction number is defined at every instant.
+
+## The model
 
 ```{julia}
-using ReproductiveNumbers, ModelingToolkit, Symbolics, OrdinaryDiffEqTsit5, Plots
+using ReproductiveNumbers, ModelingToolkit, Symbolics, OrdinaryDiffEqTsit5, Plots, Statistics
 using ModelingToolkit: t_nounits as t, D_nounits as D
 
-@parameters β₀ ε γ N
+@parameters β₀ β₁ ω γ μ N
 @variables S(t) I(t) R(t)
-β = β₀ * (1 + ε * cos(2π * t / 365))
-sir = complete(System([D(S) ~ -β * S * I / N,
-        D(I) ~ β * S * I / N - γ * I,
-        D(R) ~ γ * I],
-    t; name = :seasonal_sir))
+β = β₀ * (1 + β₁ * sin(ω * t))
+sir = complete(System([D(S) ~ μ * N - β * S * I / N - μ * S,
+                       D(I) ~ β * S * I / N - (γ + μ) * I,
+                       D(R) ~ γ * I - μ * R], t; name = :forced_sir))
 ```
 
-Asking for `R₀` fails, with a message pointing to the effective reproduction number:
+For reference, the unforced model (`β₁ = 0`) has a unique infection-free steady state and
 
 ```{julia}
-try
-    next_generation_matrix(sir, [I]; equilibrium = Dict(S => N))
-catch err
-    err
-end
+unforced = complete(System([D(S) ~ μ * N - β₀ * S * I / N - μ * S,
+                            D(I) ~ β₀ * S * I / N - (γ + μ) * I,
+                            D(R) ~ γ * I - μ * R], t; name = :sir))
+R0 = basic_reproduction_number(unforced, [I])
 ```
 
-`R_t` is a closed-form function of time and of the state:
+```{julia}
+p = [β₀ => 10 / 7, β₁ => 0.05, ω => 2π / 365, γ => 1 / 7, μ => 1 / (70 * 365), N => 1e5]
+ReproductiveNumbers.to_number(substitute(R0, Dict(p)))
+```
+
+## R_t as a function of time and state
 
 ```{julia}
 Rt = effective_reproduction_number(sir, [I])
 ```
 
-## R_t through the epidemic
+`R_t` is the product of the seasonal factor and the susceptible fraction, scaled by the
+mean infectious period. We add it to the system as an observed variable, spin the model up
+for 100 years to reach the attractor, and then follow it for ten years at daily resolution.
 
 ```{julia}
 sir_Rt, Rtvar = add_effective_reproduction_number(sir, [I])
-p = [β₀ => 0.3, ε => 0.4, γ => 0.2, N => 1e6]
-prob = ODEProblem(sir_Rt, [[S => 1e6 - 10, I => 10.0, R => 0.0]; p], (0.0, 3 * 365.0))
-sol = solve(prob, Tsit5(); saveat = 1.0)
-plt = plot(
-    sol; idxs = [Rtvar], label = "R_t", xlabel = "day", ylabel = "R_t", legend = :topright)
-hline!(plt, [1.0]; label = "threshold", linestyle = :dash)
+u0 = [S => 99_999.0, I => 1.0, R => 0.0]
+year = 365.0
+spinup = solve(ODEProblem(sir_Rt, [u0; p], (0.0, 100year)), Tsit5(); save_everystep = false)
+# the state on the attractor, by name (compiled systems may order unknowns differently)
+attractor = [S => spinup[S][end], I => spinup[I][end], R => spinup[R][end]]
+sol = solve(ODEProblem(sir_Rt, [attractor; p], (0.0, 10year)), Tsit5(); saveat = 1.0)
+years = sol.t ./ year
+plt = plot(years, sol[I]; label = "I(t)", xlabel = "year", ylabel = "infectious", legend = :topright)
 ```
-
-Susceptible depletion and the seasonal cycle combine: the first wave ends when `R_t` falls
-below one, but the return of the high-transmission season pushes `R_t` back above one and
-produces a second wave.
 
 ```{julia}
-plot(sol; idxs = [I], label = "I(t)", xlabel = "day")
+plt2 = plot(years, sol[Rtvar]; label = "R_t", xlabel = "year", ylabel = "R_t", legend = :topright)
+hline!(plt2, [1.0]; label = "threshold", linestyle = :dash)
 ```
 
-The two contributions can be separated: the seasonal factor `β(t)/β₀`, and the
-susceptible fraction `S(t)/N`.
+## Reading the two curves together
+
+`R_t` leads prevalence: infections grow exactly while `R_t > 1` and peak when `R_t`
+crosses one from above. Its annual mean is close to one, which is what an endemic
+attractor means:
 
 ```{julia}
-plot(sol.t, [0.3 / 0.2 * (1 + 0.4 * cos(2π * τ / 365)) for τ in sol.t];
-    label = "β(t)/γ (all susceptible)", xlabel = "day")
-plot!(sol.t, sol[Rtvar]; label = "R_t")
-hline!([1.0]; label = "threshold", linestyle = :dash)
+(mean = mean(sol[Rtvar]), minimum = minimum(sol[Rtvar]), maximum = maximum(sol[Rtvar]))
 ```
 
-## An intervention
+The fraction of the population susceptible hovers around `1/R₀`, the endemic level of the
+unforced model:
 
-Suppose transmission is reduced by a factor `1 - c` between days `t₁` and `t₂`, switched
-on and off smoothly. The intervention is just another factor in `β(t)`, and `R_t` follows it.
+```{julia}
+(mean(sol[S]) / 1e5, 1 / ReproductiveNumbers.to_number(substitute(R0, Dict(p))))
+```
+
+The seasonal factor `β(t)/β₀` and the susceptible fraction pull in opposite directions
+through the year, which is why the amplitude of `R_t` is smaller than the 5 % forcing would
+suggest at a fixed susceptible pool:
+
+```{julia}
+seasonal = [1 + 0.05 * sin(2π * τ / 365) for τ in sol.t]
+plot(years, seasonal; label = "β(t)/β₀", xlabel = "year")
+plot!(years, sol[S] ./ mean(sol[S]); label = "S(t)/mean S")
+plot!(years, sol[Rtvar]; label = "R_t")
+```
+
+## An intervention on the attractor
+
+A control measure that reduces transmission by half for one year, switched on and off
+smoothly, pushes `R_t` below one for its duration. Susceptibles accumulate meanwhile, so
+when it is lifted `R_t` overshoots and a larger-than-usual epidemic follows.
 
 ```{julia}
 @parameters c t₁ t₂ k
 switch(τ) = 1 / (1 + exp(-k * (τ - t₁))) * (1 - 1 / (1 + exp(-k * (τ - t₂))))
 β_int = β * (1 - c * switch(t))
-sir_int = complete(System(
-    [D(S) ~ -β_int * S * I / N,
-        D(I) ~ β_int * S * I / N - γ * I,
-        D(R) ~ γ * I],
-    t; name = :seasonal_sir_intervention))
+sir_int = complete(System([D(S) ~ μ * N - β_int * S * I / N - μ * S,
+                           D(I) ~ β_int * S * I / N - (γ + μ) * I,
+                           D(R) ~ γ * I - μ * R], t; name = :forced_sir_intervention))
 sir_int_Rt, Rtvar_int = add_effective_reproduction_number(sir_int, [I])
-p_int = [p; c => 0.5; t₁ => 60.0; t₂ => 150.0; k => 0.5]
-prob_int = ODEProblem(
-    sir_int_Rt, [[S => 1e6 - 10, I => 10.0, R => 0.0]; p_int], (0.0, 3 * 365.0))
-sol_int = solve(prob_int, Tsit5(); saveat = 1.0)
-plt = plot(sol.t, sol[Rtvar]; label = "no intervention", xlabel = "day", ylabel = "R_t")
-plot!(plt, sol_int.t, sol_int[Rtvar_int]; label = "intervention, days 60-150")
-hline!(plt, [1.0]; label = "threshold", linestyle = :dash)
+p_int = [p; c => 0.5; t₁ => 2year; t₂ => 3year; k => 0.1]
+sol_int = solve(ODEProblem(sir_int_Rt, [attractor; p_int], (0.0, 10year)), Tsit5(); saveat = 1.0)
+plt3 = plot(years, sol[Rtvar]; label = "R_t, no intervention", xlabel = "year", ylabel = "R_t")
+plot!(plt3, years, sol_int[Rtvar_int]; label = "R_t, intervention in year 2-3")
+hline!(plt3, [1.0]; label = "threshold", linestyle = :dash)
 ```
 
 ```{julia}
-plot(sol.t, sol[I]; label = "no intervention", xlabel = "day", ylabel = "I(t)")
-plot!(sol_int.t, sol_int[I]; label = "intervention")
+plot(years, sol[I]; label = "no intervention", xlabel = "year", ylabel = "infectious")
+plot!(years, sol_int[I]; label = "intervention in year 2-3")
 ```
 
-The intervention brings `R_t` below one during the first season, but leaves more
-susceptibles for the following one, which then produces a larger second wave: a familiar
-lesson that `R_t` makes visible directly.
+## Evaluating along any solution
 
-## Evaluating without rebuilding the system
-
-The same trajectory can be obtained from any solution of the original system, with the
-numeric next-generation matrix evaluated at each saved time (this also works when no closed
-form exists):
+The same `R_t` trajectory can be computed from a solution of the original system, without
+the observed variable, by evaluating the numeric next-generation matrix at each saved
+state (this also works when no closed form exists):
 
 ```{julia}
 ngm = next_generation_matrix(sir, [I]; equilibrium = Dict(), autonomous = false)
-prob0 = ODEProblem(sir, [[S => 1e6 - 10, I => 10.0, R => 0.0]; p], (0.0, 3 * 365.0))
-sol0 = solve(prob0, Tsit5(); saveat = 30.0)
-effective_reproduction_number(ngm, sol0)
+sol0 = solve(ODEProblem(sir, [attractor; p], (0.0, 10year)), Tsit5(); saveat = year / 4)
+Rt0 = effective_reproduction_number(ngm, sol0)
+maximum(abs, Rt0 .- sol(sol0.t; idxs = Rtvar).u)
 ```
